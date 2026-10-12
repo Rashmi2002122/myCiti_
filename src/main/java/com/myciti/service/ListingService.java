@@ -1,0 +1,332 @@
+package com.myciti.service;
+
+import com.myciti.dto.ImageResponse;
+import com.myciti.dto.ListingResponse;
+import com.myciti.exception.ResourceNotFoundException;
+import com.myciti.model.Category;
+import com.myciti.model.Listing;
+import com.myciti.model.ListingImage;
+import com.myciti.repository.ListingImageRepository;
+import com.myciti.repository.ListingRepository;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.sql.Date;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@Service
+public class ListingService {
+
+    private final ListingRepository listingRepository;
+    private final ListingImageRepository listingImageRepository;
+    private final ZoneId kolkataZone;
+
+    public ListingService(
+        ListingRepository listingRepository,
+        ListingImageRepository listingImageRepository,
+        @Value("${app.timezone:Asia/Kolkata}") String timeZone
+    ) {
+        this.listingRepository = listingRepository;
+        this.listingImageRepository = listingImageRepository;
+        this.kolkataZone = ZoneId.of(timeZone);
+    }
+
+    /**
+     * Fetch active listings with optional distance, category and query filters.
+     */
+    @Transactional(readOnly = true)
+    public List<ListingResponse> getListings(
+        Category category,
+        String city,
+        Double lat,
+        Double lng,
+        Double radiusKm,
+        String q
+    ) {
+        ZonedDateTime nowInKolkata = ZonedDateTime.now(kolkataZone);
+        LocalDate today = nowInKolkata.toLocalDate();
+        LocalTime currentTime = nowInKolkata.toLocalTime();
+
+        String trimmedQ = (q != null && !q.trim().isEmpty()) ? q.trim() : null;
+        String categoryStr = (category != null) ? category.name() : null;
+        String cityStr = (city != null && !city.trim().isEmpty() && !city.equalsIgnoreCase("ALL")) ? city.trim() : null;
+
+        if (lat != null && lng != null) {
+            List<Object[]> rows = listingRepository.findActiveWithDistance(
+                today,
+                lat,
+                lng,
+                radiusKm,
+                categoryStr,
+                cityStr,
+                trimmedQ
+            );
+
+            // Fetch images in a single batch query for listed IDs to avoid N+1 queries and memory exhaustion
+            List<Long> listingIds = new ArrayList<>();
+            for (Object[] row : rows) {
+                listingIds.add(((Number) row[0]).longValue());
+            }
+
+            Map<Long, List<ListingImage>> imagesByListingId = listingIds.isEmpty() ? Map.of() :
+                listingImageRepository.findByListingIdInOrderBySortOrderAsc(listingIds).stream()
+                    .collect(Collectors.groupingBy(img -> img.getListing().getId()));
+
+            List<ListingResponse> responses = new ArrayList<>();
+            for (Object[] row : rows) {
+                ListingResponse response = mapNativeRowToResponse(row, currentTime);
+                List<ListingImage> imgs = imagesByListingId.getOrDefault(response.getId(), List.of());
+                setImagesOnResponse(response, imgs);
+                responses.add(response);
+            }
+            return responses;
+        } else {
+            List<Listing> listings = listingRepository.findActiveWithoutDistance(today, categoryStr, cityStr, trimmedQ);
+            if (listings.isEmpty()) {
+                return List.of();
+            }
+
+            List<Long> listingIds = listings.stream().map(Listing::getId).collect(Collectors.toList());
+            Map<Long, List<ListingImage>> imagesByListingId = listingImageRepository
+                .findByListingIdInOrderBySortOrderAsc(listingIds).stream()
+                .collect(Collectors.groupingBy(img -> img.getListing().getId()));
+
+            return listings.stream()
+                .map(listing -> {
+                    ListingResponse response = mapEntityToResponse(listing, currentTime, null);
+                    List<ListingImage> imgs = imagesByListingId.getOrDefault(listing.getId(), List.of());
+                    setImagesOnResponse(response, imgs);
+                    return response;
+                })
+                .collect(Collectors.toList());
+        }
+    }
+
+    /**
+     * Get single listing detail by ID.
+     */
+    @Transactional(readOnly = true)
+    public ListingResponse getListingById(Long id) {
+        Listing listing = listingRepository.findByIdWithImages(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Listing with id " + id + " not found"));
+
+        ZonedDateTime nowInKolkata = ZonedDateTime.now(kolkataZone);
+        ListingResponse response = mapEntityToResponse(listing, nowInKolkata.toLocalTime(), null);
+        setImagesOnResponse(response, listing.getImages());
+        return response;
+    }
+
+    /**
+     * Compute whether a listing is currently open in Asia/Kolkata timezone.
+     */
+    public boolean computeOpenNow(LocalTime openTime, LocalTime closeTime, LocalTime currentTime) {
+        if (openTime == null || closeTime == null || currentTime == null) {
+            return false;
+        }
+
+        // Standard case: e.g. 09:00 to 22:00
+        if (openTime.isBefore(closeTime)) {
+            return !currentTime.isBefore(openTime) && !currentTime.isAfter(closeTime);
+        }
+        // Overnight case: e.g. 08:00 to 02:00 (past midnight next morning)
+        else if (openTime.isAfter(closeTime)) {
+            return !currentTime.isBefore(openTime) || !currentTime.isAfter(closeTime);
+        }
+        // 24-hour open case: e.g. 00:00 to 00:00
+        else {
+            return true;
+        }
+    }
+
+    private void setImagesOnResponse(ListingResponse response, List<ListingImage> images) {
+        if (images != null && !images.isEmpty()) {
+            List<ImageResponse> imageResponses = images.stream()
+                .sorted((a, b) -> Integer.compare(a.getSortOrder(), b.getSortOrder()))
+                .map(img -> new ImageResponse(img.getId(), img.getUrl(), img.getSortOrder(), img.getCreatedAt()))
+                .collect(Collectors.toList());
+            response.setImages(imageResponses);
+            response.setPrimaryImageUrl(imageResponses.get(0).getUrl());
+        } else {
+            response.setImages(List.of());
+            response.setPrimaryImageUrl(null);
+        }
+    }
+
+    private ListingResponse mapEntityToResponse(Listing listing, LocalTime currentTime, Double distanceKm) {
+        ListingResponse dto = new ListingResponse();
+        dto.setId(listing.getId());
+        dto.setTitle(listing.getTitle());
+        dto.setCategory(listing.getCategory());
+        dto.setDescription(listing.getDescription());
+        dto.setAddress(listing.getAddress());
+        dto.setLandmark(listing.getLandmark());
+        dto.setCity(listing.getCity() != null ? listing.getCity() : "Kolkata");
+        dto.setLatitude(listing.getLatitude());
+        dto.setLongitude(listing.getLongitude());
+        dto.setStartDate(listing.getStartDate());
+        dto.setEndDate(listing.getEndDate());
+        dto.setDailyOpenTime(listing.getDailyOpenTime());
+        dto.setDailyCloseTime(listing.getDailyCloseTime());
+        dto.setOfferText(listing.getOfferText());
+        dto.setContactPhone(listing.getContactPhone());
+        dto.setStatus(listing.getStatus());
+        dto.setCreatedAt(listing.getCreatedAt());
+        dto.setUpdatedAt(listing.getUpdatedAt());
+        dto.setDistanceKm(distanceKm != null ? roundTwoDecimals(distanceKm) : null);
+        dto.setOpenNow(computeOpenNow(listing.getDailyOpenTime(), listing.getDailyCloseTime(), currentTime));
+        return dto;
+    }
+
+    private ListingResponse mapNativeRowToResponse(Object[] row, LocalTime currentTime) {
+        ListingResponse dto = new ListingResponse();
+        // Column indices match:
+        // 0: id, 1: title, 2: category, 3: description, 4: address, 5: landmark,
+        // 6: city, 7: latitude, 8: longitude, 9: start_date, 10: end_date, 11: daily_open_time,
+        // 12: daily_close_time, 13: offer_text, 14: contact_phone, 15: status,
+        // 16: created_at, 17: updated_at, 18: distance_km
+        dto.setId(((Number) row[0]).longValue());
+        dto.setTitle((String) row[1]);
+        dto.setCategory(Category.valueOf((String) row[2]));
+        dto.setDescription((String) row[3]);
+        dto.setAddress((String) row[4]);
+        dto.setLandmark((String) row[5]);
+        dto.setCity(row[6] != null ? (String) row[6] : "Kolkata");
+        dto.setLatitude(((Number) row[7]).doubleValue());
+        dto.setLongitude(((Number) row[8]).doubleValue());
+
+        if (row[9] instanceof Date) {
+            dto.setStartDate(((Date) row[9]).toLocalDate());
+        }
+        if (row[10] instanceof Date) {
+            dto.setEndDate(((Date) row[10]).toLocalDate());
+        }
+        if (row[11] instanceof Time) {
+            dto.setDailyOpenTime(((Time) row[11]).toLocalTime());
+        }
+        if (row[12] instanceof Time) {
+            dto.setDailyCloseTime(((Time) row[12]).toLocalTime());
+        }
+
+        dto.setOfferText((String) row[13]);
+        dto.setContactPhone((String) row[14]);
+        dto.setStatus(com.myciti.model.Status.valueOf((String) row[15]));
+
+        if (row[16] instanceof Timestamp) {
+            dto.setCreatedAt(((Timestamp) row[16]).toInstant());
+        }
+        if (row[17] instanceof Timestamp) {
+            dto.setUpdatedAt(((Timestamp) row[17]).toInstant());
+        }
+
+        if (row.length > 18 && row[18] != null) {
+            double distance = ((Number) row[18]).doubleValue();
+            dto.setDistanceKm(roundTwoDecimals(distance));
+        }
+
+        dto.setOpenNow(computeOpenNow(dto.getDailyOpenTime(), dto.getDailyCloseTime(), currentTime));
+        return dto;
+    }
+
+    private double roundTwoDecimals(double val) {
+        return BigDecimal.valueOf(val).setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
+    }
+
+    /**
+     * Admin: Fetch all listings regardless of status or date.
+     */
+    @Transactional(readOnly = true)
+    public List<ListingResponse> getAllListingsForAdmin() {
+        ZonedDateTime nowInKolkata = ZonedDateTime.now(kolkataZone);
+        LocalTime currentTime = nowInKolkata.toLocalTime();
+        return listingRepository.findAll().stream()
+            .map(l -> {
+                ListingResponse res = mapEntityToResponse(l, currentTime, null);
+                setImagesOnResponse(res, l.getImages());
+                return res;
+            })
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Admin: Create new listing.
+     */
+    @Transactional
+    public ListingResponse createListing(com.myciti.dto.ListingRequest req) {
+        Listing listing = new Listing();
+        copyProperties(req, listing);
+        Listing saved = listingRepository.save(listing);
+        ZonedDateTime nowInKolkata = ZonedDateTime.now(kolkataZone);
+        return mapEntityToResponse(saved, nowInKolkata.toLocalTime(), null);
+    }
+
+    /**
+     * Admin: Update existing listing.
+     */
+    @Transactional
+    public ListingResponse updateListing(Long id, com.myciti.dto.ListingRequest req) {
+        Listing listing = listingRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Listing #" + id + " not found"));
+        copyProperties(req, listing);
+        Listing updated = listingRepository.save(listing);
+        ZonedDateTime nowInKolkata = ZonedDateTime.now(kolkataZone);
+        ListingResponse res = mapEntityToResponse(updated, nowInKolkata.toLocalTime(), null);
+        setImagesOnResponse(res, updated.getImages());
+        return res;
+    }
+
+    /**
+     * Admin: Delete listing.
+     */
+    @Transactional
+    public void deleteListing(Long id) {
+        if (!listingRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Listing #" + id + " not found");
+        }
+        listingRepository.deleteById(id);
+    }
+
+    /**
+     * Admin: Add image to listing.
+     */
+    @Transactional
+    public ImageResponse addListingImage(Long listingId, String imageUrl, Integer sortOrder) {
+        Listing listing = listingRepository.findById(listingId)
+            .orElseThrow(() -> new ResourceNotFoundException("Listing #" + listingId + " not found"));
+
+        int order = (sortOrder != null) ? sortOrder : listing.getImages().size() + 1;
+        ListingImage image = new ListingImage(listing, imageUrl, order);
+        listing.addImage(image);
+        ListingImage savedImage = listingImageRepository.save(image);
+
+        return new ImageResponse(savedImage.getId(), savedImage.getUrl(), savedImage.getSortOrder(), savedImage.getCreatedAt());
+    }
+
+    private void copyProperties(com.myciti.dto.ListingRequest req, Listing listing) {
+        listing.setTitle(req.getTitle());
+        listing.setCategory(req.getCategory());
+        listing.setDescription(req.getDescription());
+        listing.setAddress(req.getAddress());
+        listing.setLandmark(req.getLandmark());
+        listing.setCity(req.getCity() != null && !req.getCity().trim().isEmpty() ? req.getCity().trim() : "Kolkata");
+        listing.setLatitude(req.getLatitude());
+        listing.setLongitude(req.getLongitude());
+        listing.setStartDate(req.getStartDate());
+        listing.setEndDate(req.getEndDate());
+        listing.setDailyOpenTime(req.getDailyOpenTime());
+        listing.setDailyCloseTime(req.getDailyCloseTime());
+        listing.setOfferText(req.getOfferText());
+        listing.setContactPhone(req.getContactPhone());
+        listing.setStatus(req.getStatus() != null ? req.getStatus() : com.myciti.model.Status.DRAFT);
+    }
+}
