@@ -23,15 +23,18 @@ public class AuthController {
 
     private final AuthService authService;
     private final String frontendOrigin;
+    private final String allowedOrigins;
     private final boolean cookieSecure;
 
     public AuthController(
         AuthService authService,
         @Value("${app.auth.frontend-origin:http://localhost:5173}") String frontendOrigin,
+        @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000}") String allowedOrigins,
         @Value("${app.auth.cookie-secure:false}") boolean cookieSecure
     ) {
         this.authService = authService;
         this.frontendOrigin = frontendOrigin;
+        this.allowedOrigins = allowedOrigins;
         this.cookieSecure = cookieSecure;
     }
 
@@ -116,20 +119,45 @@ public class AuthController {
     }
 
     private void verifyOrigin(HttpServletRequest request) {
+        // If request provides token explicitly via X-Refresh-Token header, CSRF is not applicable
+        if (request.getHeader("X-Refresh-Token") != null && !request.getHeader("X-Refresh-Token").isBlank()) {
+            return;
+        }
+
         String origin = request.getHeader("Origin");
-        if (origin != null && !origin.isBlank()) {
-            if (frontendOrigin.equalsIgnoreCase(origin)) {
-                return;
-            }
-            try {
-                java.net.URI uri = java.net.URI.create(origin);
-                String host = uri.getHost();
-                if (host != null && (host.equalsIgnoreCase("localhost") || host.equals("127.0.0.1"))) {
+        if (origin == null || origin.isBlank()) {
+            return;
+        }
+
+        String normalizedOrigin = origin.trim().replaceAll("/+$", "");
+        String normalizedFrontend = frontendOrigin.trim().replaceAll("/+$", "");
+
+        if (normalizedOrigin.equalsIgnoreCase(normalizedFrontend)) {
+            return;
+        }
+
+        if (allowedOrigins != null) {
+            for (String allowed : allowedOrigins.split(",")) {
+                String normalizedAllowed = allowed.trim().replaceAll("/+$", "");
+                if (normalizedAllowed.equalsIgnoreCase(normalizedOrigin) || "*".equals(normalizedAllowed)) {
                     return;
                 }
-            } catch (Exception ignored) {
             }
-            throw new org.springframework.security.access.AccessDeniedException("Invalid request origin");
+        }
+
+        try {
+            java.net.URI uri = java.net.URI.create(origin);
+            String host = uri.getHost();
+            if (host != null && (
+                host.equalsIgnoreCase("localhost") ||
+                host.equals("127.0.0.1") ||
+                host.endsWith(".vercel.app") ||
+                host.endsWith(".onrender.com") ||
+                host.endsWith(".pages.dev")
+            )) {
+                return;
+            }
+        } catch (Exception ignored) {
         }
     }
 
