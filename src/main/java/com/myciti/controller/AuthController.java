@@ -105,23 +105,27 @@ public class AuthController {
     }
 
     private void setRefreshTokenCookie(HttpServletResponse response, String refreshToken) {
-        ResponseCookie cookie = ResponseCookie.from("refresh_token", refreshToken)
+        // When cookieSecure is true (production HTTPS cross-domain), use SameSite=None so browser permits cross-origin cookies.
+        String sameSitePolicy = cookieSecure ? "None" : "Lax";
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from("refresh_token", refreshToken)
             .httpOnly(true)
             .secure(cookieSecure)
             .path("/api/auth")
             .maxAge(30L * 24 * 60 * 60) // 30 days
-            .sameSite("Lax")
-            .build();
+            .sameSite(sameSitePolicy);
+
+        ResponseCookie cookie = builder.build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 
     private void clearRefreshTokenCookie(HttpServletResponse response) {
+        String sameSitePolicy = cookieSecure ? "None" : "Lax";
         ResponseCookie cookie = ResponseCookie.from("refresh_token", "")
             .httpOnly(true)
             .secure(cookieSecure)
             .path("/api/auth")
             .maxAge(0)
-            .sameSite("Lax")
+            .sameSite(sameSitePolicy)
             .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
