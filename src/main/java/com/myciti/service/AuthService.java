@@ -23,8 +23,14 @@ import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
+
 @Service
 public class AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -34,6 +40,7 @@ public class AuthService {
 
     private final Set<String> adminEmails;
     private final long refreshTtlDays;
+    private final int maxActiveTokensPerUser;
 
     public AuthService(
         UserRepository userRepository,
@@ -43,6 +50,19 @@ public class AuthService {
         JwtProvider jwtProvider,
         @Value("${app.auth.admin-emails:admin@myciti.com}") String adminEmailsConfig,
         @Value("${app.jwt.refresh-ttl-days:30}") long refreshTtlDays
+    ) {
+        this(userRepository, refreshTokenRepository, auditLogRepository, googleTokenVerifierService, jwtProvider, adminEmailsConfig, refreshTtlDays, 5);
+    }
+
+    public AuthService(
+        UserRepository userRepository,
+        RefreshTokenRepository refreshTokenRepository,
+        AuditLogRepository auditLogRepository,
+        GoogleTokenVerifierService googleTokenVerifierService,
+        JwtProvider jwtProvider,
+        String adminEmailsConfig,
+        long refreshTtlDays,
+        int maxActiveTokensPerUser
     ) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
@@ -55,6 +75,7 @@ public class AuthService {
             .filter(s -> !s.isEmpty())
             .collect(Collectors.toSet());
         this.refreshTtlDays = refreshTtlDays;
+        this.maxActiveTokensPerUser = maxActiveTokensPerUser > 0 ? maxActiveTokensPerUser : 5;
     }
 
     /**
@@ -99,6 +120,12 @@ public class AuthService {
         if (user.getRole() == Role.ADMIN) {
             auditLogRepository.save(new AuditLog(user.getId(), "ADMIN_LOGIN", "Admin logged in via Google: " + user.getEmail()));
         }
+
+        // 1. Purge expired or already revoked tokens for this user
+        refreshTokenRepository.deleteRevokedAndExpiredForUser(user.getId(), Instant.now());
+
+        // 2. Cap active tokens: ensure user has room for the new token
+        capActiveTokensForUser(user.getId(), maxActiveTokensPerUser - 1);
 
         // Generate Access JWT & Refresh Token
         String accessToken = jwtProvider.generateToken(user.getId(), user.getEmail(), user.getRole(), user.isProfileComplete());
@@ -145,8 +172,38 @@ public class AuthService {
         RefreshToken newRefreshToken = new RefreshToken(user, newTokenHash, expiresAt);
         refreshTokenRepository.save(newRefreshToken);
 
+        // Clean up dead tokens (revoked or expired) older than 5 minutes for this user
+        refreshTokenRepository.deleteRevokedAndExpiredForUser(user.getId(), Instant.now().minus(Duration.ofMinutes(5)));
+
+        // Cap active tokens for the user
+        capActiveTokensForUser(user.getId(), maxActiveTokensPerUser);
+
         String newAccessToken = jwtProvider.generateToken(user.getId(), user.getEmail(), user.getRole(), user.isProfileComplete());
         return new AuthResult(newAccessToken, newRawRefreshToken, mapToDto(user));
+    }
+
+    private void capActiveTokensForUser(Long userId, int maxAllowed) {
+        if (userId == null || maxAllowed < 0) return;
+        List<RefreshToken> activeTokens = refreshTokenRepository.findByUser_IdAndRevokedAtIsNullOrderByCreatedAtDesc(userId);
+        if (activeTokens != null && activeTokens.size() > maxAllowed) {
+            for (int i = maxAllowed; i < activeTokens.size(); i++) {
+                RefreshToken olderToken = activeTokens.get(i);
+                olderToken.setRevokedAt(Instant.now());
+                refreshTokenRepository.save(olderToken);
+            }
+        }
+    }
+
+    /**
+     * Nightly cleanup job at 03:00 AM (Asia/Kolkata) to purge all expired and revoked tokens database-wide.
+     */
+    @Scheduled(cron = "0 0 3 * * ?", zone = "Asia/Kolkata")
+    @Transactional
+    public void purgeExpiredAndRevokedTokens() {
+        int purged = refreshTokenRepository.deleteAllRevokedAndExpired(Instant.now());
+        if (purged > 0) {
+            log.info("[AuthService] Nightly cleanup: purged {} expired/revoked refresh tokens from DB.", purged);
+        }
     }
 
     /**
