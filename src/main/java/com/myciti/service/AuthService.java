@@ -150,14 +150,14 @@ public class AuthService {
     }
 
     /**
-     * Logout: revoke the refresh token.
+     * Logout: revoke the refresh token immediately with no grace period.
      */
     @Transactional
     public void logout(String rawRefreshToken) {
         if (rawRefreshToken != null && !rawRefreshToken.isBlank()) {
             String tokenHash = hashToken(rawRefreshToken);
             refreshTokenRepository.findByTokenHash(tokenHash).ifPresent(rt -> {
-                rt.setRevokedAt(Instant.now());
+                rt.setRevokedAt(Instant.EPOCH);
                 refreshTokenRepository.save(rt);
             });
         }
