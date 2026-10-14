@@ -2,6 +2,7 @@ package com.myciti.controller;
 
 import com.myciti.dto.AuthResponse;
 import com.myciti.dto.GoogleAuthRequest;
+import com.myciti.dto.RefreshTokenRequest;
 import com.myciti.service.AuthService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,29 +45,43 @@ public class AuthController {
     ) {
         AuthService.AuthResult result = authService.loginWithGoogle(request.getIdToken());
         setRefreshTokenCookie(response, result.rawRefreshToken());
-        return ResponseEntity.ok(new AuthResponse(result.accessToken(), result.user()));
+        // Return both accessToken and refreshToken to support cross-domain SPAs where 3rd-party cookies might be blocked
+        return ResponseEntity.ok(new AuthResponse(result.accessToken(), result.rawRefreshToken(), result.user()));
     }
 
     /**
      * POST /api/auth/refresh
-     * Checks Origin/Referer header to defend against CSRF, reads HttpOnly cookie.
+     * Reads refresh token from:
+     * 1. HttpOnly Cookie (for same-origin or modern browsers permitting partitioned cookies)
+     * 2. X-Refresh-Token request header
+     * 3. Optional JSON request body
      */
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refresh(
         HttpServletRequest request,
         HttpServletResponse response,
-        @CookieValue(name = "refresh_token", required = false) String cookieRefreshToken
+        @CookieValue(name = "refresh_token", required = false) String cookieRefreshToken,
+        @RequestHeader(name = "X-Refresh-Token", required = false) String headerRefreshToken,
+        @RequestBody(required = false) RefreshTokenRequest bodyRequest
     ) {
         verifyOrigin(request);
 
         String token = cookieRefreshToken;
+        if (token == null || token.isBlank()) {
+            token = headerRefreshToken;
+        }
+        if (token == null || token.isBlank()) {
+            if (bodyRequest != null && bodyRequest.getRefreshToken() != null) {
+                token = bodyRequest.getRefreshToken();
+            }
+        }
         if (token == null || token.isBlank()) {
             token = extractCookie(request, "refresh_token");
         }
 
         AuthService.AuthResult result = authService.refreshSession(token);
         setRefreshTokenCookie(response, result.rawRefreshToken());
-        return ResponseEntity.ok(new AuthResponse(result.accessToken(), result.user()));
+        return ResponseEntity.ok(new AuthResponse(result.accessToken(), result.rawRefreshToken(), result.user()));
     }
 
     /**
@@ -76,11 +91,25 @@ public class AuthController {
     public ResponseEntity<Void> logout(
         HttpServletRequest request,
         HttpServletResponse response,
-        @CookieValue(name = "refresh_token", required = false) String cookieRefreshToken
+        @CookieValue(name = "refresh_token", required = false) String cookieRefreshToken,
+        @RequestHeader(name = "X-Refresh-Token", required = false) String headerRefreshToken,
+        @RequestBody(required = false) RefreshTokenRequest bodyRequest
     ) {
         verifyOrigin(request);
 
-        String token = cookieRefreshToken != null ? cookieRefreshToken : extractCookie(request, "refresh_token");
+        String token = cookieRefreshToken;
+        if (token == null || token.isBlank()) {
+            token = headerRefreshToken;
+        }
+        if (token == null || token.isBlank()) {
+            if (bodyRequest != null && bodyRequest.getRefreshToken() != null) {
+                token = bodyRequest.getRefreshToken();
+            }
+        }
+        if (token == null || token.isBlank()) {
+            token = extractCookie(request, "refresh_token");
+        }
+
         authService.logout(token);
         clearRefreshTokenCookie(response);
         return ResponseEntity.ok().build();
