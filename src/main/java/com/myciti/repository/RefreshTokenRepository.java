@@ -14,7 +14,17 @@ import java.util.Optional;
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
     Optional<RefreshToken> findByTokenHash(String tokenHash);
 
+    java.util.List<RefreshToken> findByUser_IdAndRevokedAtIsNullOrderByCreatedAtDesc(Long userId);
+
     @Modifying
     @Query("UPDATE RefreshToken rt SET rt.revokedAt = :now WHERE rt.user.id = :userId AND rt.revokedAt IS NULL")
     void revokeAllForUser(@Param("userId") Long userId, @Param("now") Instant now);
+
+    @Modifying
+    @Query("DELETE FROM RefreshToken rt WHERE rt.user.id = :userId AND (rt.revokedAt IS NOT NULL OR rt.expiresAt < :now)")
+    void deleteRevokedAndExpiredForUser(@Param("userId") Long userId, @Param("now") Instant now);
+
+    @Modifying
+    @Query("DELETE FROM RefreshToken rt WHERE rt.revokedAt IS NOT NULL OR rt.expiresAt < :now")
+    int deleteAllRevokedAndExpired(@Param("now") Instant now);
 }

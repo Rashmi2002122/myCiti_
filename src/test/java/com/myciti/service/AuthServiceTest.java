@@ -165,4 +165,28 @@ public class AuthServiceTest {
 
         assertThrows(AccessDeniedException.class, () -> authService.refreshSession("raw-token"));
     }
+
+    @Test
+    void loginWithGoogle_exceedsMaxActiveTokens_revokesOldestTokens() {
+        GoogleUserInfo googleUser = new GoogleUserInfo("sub-cap", "cap@example.com", true, "Cap User", null);
+        when(googleTokenVerifierService.verifyToken("cap-token")).thenReturn(googleUser);
+
+        User user = new User("sub-cap", "cap@example.com", "Cap User", null);
+        user.setId(50L);
+        when(userRepository.findByGoogleSub("sub-cap")).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+        when(jwtProvider.generateToken(any(), any(), any(), anyBoolean())).thenReturn("cap-access-token");
+
+        // Simulate user already having 5 active tokens (exceeding cap of 4 before adding new)
+        java.util.List<RefreshToken> existingActive = new java.util.ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            existingActive.add(new RefreshToken(user, "hash-" + i, java.time.Instant.now().plusSeconds(3600)));
+        }
+        when(refreshTokenRepository.findByUser_IdAndRevokedAtIsNullOrderByCreatedAtDesc(50L)).thenReturn(existingActive);
+
+        authService.loginWithGoogle("cap-token");
+
+        // Oldest token (at index 4) should have been revoked
+        assertNotNull(existingActive.get(4).getRevokedAt());
+    }
 }
