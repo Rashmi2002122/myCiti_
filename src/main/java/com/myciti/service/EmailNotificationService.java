@@ -22,7 +22,7 @@ public class EmailNotificationService {
     @Value("${app.mail.from:admin@myciti.com}")
     private String fromEmail;
 
-    @Value("${app.auth.admin-emails:ranjanjena8457@gmail.com}")
+    @Value("${app.auth.admin-emails:}")
     private String adminEmails;
 
     /**
@@ -32,6 +32,11 @@ public class EmailNotificationService {
         if (!mailEnabled || mailSender == null) {
             log.info("[Notification] New advertisement submitted for review: #{} '{}' by {} ({}). (Mail sending disabled)",
                     submissionId, submissionTitle, submitterName, submitterEmail);
+            return;
+        }
+
+        if (adminEmails == null || adminEmails.isBlank()) {
+            log.warn("[Notification] No admin email configured. Skipping notification email for submission #{}", submissionId);
             return;
         }
 

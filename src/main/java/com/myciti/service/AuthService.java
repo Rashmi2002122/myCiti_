@@ -1,9 +1,7 @@
 package com.myciti.service;
 
-import com.myciti.dto.AuthResponse;
 import com.myciti.dto.GoogleUserInfo;
 import com.myciti.dto.UserDto;
-import com.myciti.exception.ResourceNotFoundException;
 import com.myciti.model.*;
 import com.myciti.repository.AuditLogRepository;
 import com.myciti.repository.RefreshTokenRepository;
@@ -50,7 +48,7 @@ public class AuthService {
         AuditLogRepository auditLogRepository,
         GoogleTokenVerifierService googleTokenVerifierService,
         JwtProvider jwtProvider,
-        @Value("${app.auth.admin-emails:admin@myciti.com}") String adminEmailsConfig,
+        @Value("${app.auth.admin-emails:}") String adminEmailsConfig,
         @Value("${app.jwt.refresh-ttl-days:30}") long refreshTtlDays,
         @Value("${app.auth.max-active-tokens-per-user:5}") int maxActiveTokensPerUser
     ) {
@@ -59,25 +57,15 @@ public class AuthService {
         this.auditLogRepository = auditLogRepository;
         this.googleTokenVerifierService = googleTokenVerifierService;
         this.jwtProvider = jwtProvider;
-        this.adminEmails = Arrays.stream(adminEmailsConfig.split(","))
-            .map(String::trim)
-            .map(String::toLowerCase)
-            .filter(s -> !s.isEmpty())
-            .collect(Collectors.toSet());
+        this.adminEmails = (adminEmailsConfig != null && !adminEmailsConfig.isBlank())
+            ? Arrays.stream(adminEmailsConfig.split(","))
+                .map(String::trim)
+                .map(String::toLowerCase)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet())
+            : Collections.emptySet();
         this.refreshTtlDays = refreshTtlDays;
         this.maxActiveTokensPerUser = maxActiveTokensPerUser > 0 ? maxActiveTokensPerUser : 5;
-    }
-
-    public AuthService(
-        UserRepository userRepository,
-        RefreshTokenRepository refreshTokenRepository,
-        AuditLogRepository auditLogRepository,
-        GoogleTokenVerifierService googleTokenVerifierService,
-        JwtProvider jwtProvider,
-        String adminEmailsConfig,
-        long refreshTtlDays
-    ) {
-        this(userRepository, refreshTokenRepository, auditLogRepository, googleTokenVerifierService, jwtProvider, adminEmailsConfig, refreshTtlDays, 5);
     }
 
     /**
@@ -87,7 +75,7 @@ public class AuthService {
     public AuthResult loginWithGoogle(String idToken) {
         GoogleUserInfo googleUser = googleTokenVerifierService.verifyToken(idToken);
 
-        // 4. Look up user by Google subject ("sub"). If not found, check if email exists to link or create new
+        // Look up user by Google subject ("sub"). If not found, check if email exists to link or create new
         String normalizedEmail = googleUser.getEmail().toLowerCase().trim();
         User user = userRepository.findByGoogleSub(googleUser.getSub())
             .or(() -> userRepository.findByEmail(normalizedEmail).map(existing -> {
@@ -101,22 +89,22 @@ public class AuthService {
                 googleUser.getPictureUrl()
             ));
 
+        // Enforce account suspension check BEFORE mutating state or writing to DB
+        if (user.getId() != null && user.getStatus() == UserStatus.SUSPENDED) {
+            throw new AccessDeniedException("Your account is suspended. Contact admin@myciti.com");
+        }
+
         // Update profile photo and name if changed in Google
         if (googleUser.getName() != null) user.setName(googleUser.getName());
         if (googleUser.getPictureUrl() != null) user.setPictureUrl(googleUser.getPictureUrl());
         user.setEmail(googleUser.getEmail().toLowerCase().trim());
         user.setLastLoginAt(Instant.now());
 
-        // 5. Role decided only on server: ADMIN if email in ADMIN_EMAILS (re-checked on every login)
+        // Role decided only on server: ADMIN if email in ADMIN_EMAILS (re-checked on every login)
         Role calculatedRole = adminEmails.contains(user.getEmail().toLowerCase()) ? Role.ADMIN : Role.SUBMITTER;
         user.setRole(calculatedRole);
 
         user = userRepository.save(user);
-
-        // 7. SUSPENDED users get 403
-        if (user.getStatus() == UserStatus.SUSPENDED) {
-            throw new AccessDeniedException("Your account is suspended. Contact admin@myciti.com");
-        }
 
         // Audit log admin logins
         if (user.getRole() == Role.ADMIN) {
@@ -188,10 +176,12 @@ public class AuthService {
         if (userId == null || maxAllowed < 0) return;
         List<RefreshToken> activeTokens = refreshTokenRepository.findByUser_IdAndRevokedAtIsNullOrderByCreatedAtDesc(userId);
         if (activeTokens != null && activeTokens.size() > maxAllowed) {
-            for (int i = maxAllowed; i < activeTokens.size(); i++) {
-                RefreshToken olderToken = activeTokens.get(i);
-                olderToken.setRevokedAt(Instant.now());
-                refreshTokenRepository.save(olderToken);
+            List<Long> idsToRevoke = activeTokens.subList(maxAllowed, activeTokens.size())
+                .stream()
+                .map(RefreshToken::getId)
+                .toList();
+            if (!idsToRevoke.isEmpty()) {
+                refreshTokenRepository.revokeByIds(idsToRevoke, Instant.now());
             }
         }
     }
@@ -222,7 +212,7 @@ public class AuthService {
         }
     }
 
-    public String hashToken(String rawToken) {
+    String hashToken(String rawToken) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));
@@ -232,7 +222,7 @@ public class AuthService {
         }
     }
 
-    public UserDto mapToDto(User user) {
+    UserDto mapToDto(User user) {
         return new UserDto(
             user.getId(),
             user.getEmail(),

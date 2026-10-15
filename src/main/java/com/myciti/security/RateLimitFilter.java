@@ -68,6 +68,22 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private boolean isLocalOrProxy(String ip) {
         if (ip == null) return false;
-        return ip.equals("127.0.0.1") || ip.equals("0:0:0:0:0:0:0:1") || ip.equals("::1") || ip.startsWith("172.") || ip.startsWith("10.");
+        if (ip.equals("127.0.0.1") || ip.equals("0:0:0:0:0:0:0:1") || ip.equals("::1")) {
+            return true;
+        }
+        if (ip.startsWith("10.") || ip.startsWith("192.168.")) {
+            return true;
+        }
+        if (ip.startsWith("172.")) {
+            try {
+                String[] parts = ip.split("\\.");
+                if (parts.length >= 2) {
+                    int secondOctet = Integer.parseInt(parts[1]);
+                    return secondOctet >= 16 && secondOctet <= 31;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return false;
     }
 }
