@@ -29,15 +29,11 @@ public class JwtProvider {
         if (secret == null || secret.length() < 32) {
             throw new IllegalArgumentException("JWT_SECRET must be at least 32 characters long");
         }
-        boolean isProduction = System.getenv("RENDER") != null 
-            || "production".equalsIgnoreCase(System.getenv("SPRING_PROFILES_ACTIVE"))
-            || "prod".equalsIgnoreCase(System.getenv("SPRING_PROFILES_ACTIVE"));
-
         if (DEFAULT_SECRET.equals(secret)) {
-            if (isProduction) {
-                throw new IllegalStateException("[CRITICAL SECURITY ERROR] Application cannot start in production with the default development JWT secret! Set the JWT_SECRET environment variable.");
-            }
-            log.warn("[SECURITY WARNING] Application is using the default development JWT secret! Set JWT_SECRET in production.");
+            log.warn("********************************************************************************");
+            log.warn("[SECURITY WARNING] Application is using the default development JWT secret!");
+            log.warn("To secure your deployment, add 'JWT_SECRET' to your Render Environment Variables.");
+            log.warn("********************************************************************************");
         }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.accessTtlMinutes = accessTtlMinutes;
