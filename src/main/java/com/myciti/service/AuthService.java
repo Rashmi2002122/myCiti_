@@ -9,6 +9,7 @@ import com.myciti.repository.AuditLogRepository;
 import com.myciti.repository.RefreshTokenRepository;
 import com.myciti.repository.UserRepository;
 import com.myciti.security.JwtProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -42,6 +43,7 @@ public class AuthService {
     private final long refreshTtlDays;
     private final int maxActiveTokensPerUser;
 
+    @Autowired
     public AuthService(
         UserRepository userRepository,
         RefreshTokenRepository refreshTokenRepository,
@@ -49,20 +51,8 @@ public class AuthService {
         GoogleTokenVerifierService googleTokenVerifierService,
         JwtProvider jwtProvider,
         @Value("${app.auth.admin-emails:admin@myciti.com}") String adminEmailsConfig,
-        @Value("${app.jwt.refresh-ttl-days:30}") long refreshTtlDays
-    ) {
-        this(userRepository, refreshTokenRepository, auditLogRepository, googleTokenVerifierService, jwtProvider, adminEmailsConfig, refreshTtlDays, 5);
-    }
-
-    public AuthService(
-        UserRepository userRepository,
-        RefreshTokenRepository refreshTokenRepository,
-        AuditLogRepository auditLogRepository,
-        GoogleTokenVerifierService googleTokenVerifierService,
-        JwtProvider jwtProvider,
-        String adminEmailsConfig,
-        long refreshTtlDays,
-        int maxActiveTokensPerUser
+        @Value("${app.jwt.refresh-ttl-days:30}") long refreshTtlDays,
+        @Value("${app.auth.max-active-tokens-per-user:5}") int maxActiveTokensPerUser
     ) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
@@ -76,6 +66,18 @@ public class AuthService {
             .collect(Collectors.toSet());
         this.refreshTtlDays = refreshTtlDays;
         this.maxActiveTokensPerUser = maxActiveTokensPerUser > 0 ? maxActiveTokensPerUser : 5;
+    }
+
+    public AuthService(
+        UserRepository userRepository,
+        RefreshTokenRepository refreshTokenRepository,
+        AuditLogRepository auditLogRepository,
+        GoogleTokenVerifierService googleTokenVerifierService,
+        JwtProvider jwtProvider,
+        String adminEmailsConfig,
+        long refreshTtlDays
+    ) {
+        this(userRepository, refreshTokenRepository, auditLogRepository, googleTokenVerifierService, jwtProvider, adminEmailsConfig, refreshTtlDays, 5);
     }
 
     /**
