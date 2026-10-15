@@ -53,7 +53,12 @@ public class CloudinaryStorageService implements StorageService {
             }
         }
 
-        Map<?, ?> uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
+        byte[] fileBytes = file.getBytes();
+        if (!isValidImageMagicBytes(fileBytes)) {
+            throw new IllegalArgumentException("File content does not match a valid JPG, PNG, or WEBP image header");
+        }
+
+        Map<?, ?> uploadResult = cloudinary.uploader().upload(fileBytes, ObjectUtils.asMap(
                 "folder", "myciti",
                 "transformation", new Transformation<>()
                         .width(1200)
@@ -82,5 +87,23 @@ public class CloudinaryStorageService implements StorageService {
         } catch (Exception e) {
             log.warn("Failed to delete image '{}' from Cloudinary: {}", url, e.getMessage());
         }
+    }
+
+    private boolean isValidImageMagicBytes(byte[] bytes) {
+        if (bytes == null || bytes.length < 12) return false;
+        // JPEG: FF D8 FF
+        if ((bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xFF) == 0xD8 && (bytes[2] & 0xFF) == 0xFF) {
+            return true;
+        }
+        // PNG: 89 50 4E 47 0D 0A 1A 0A
+        if ((bytes[0] & 0xFF) == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) {
+            return true;
+        }
+        // WEBP: RIFF....WEBP
+        if (bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' &&
+            bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P') {
+            return true;
+        }
+        return false;
     }
 }

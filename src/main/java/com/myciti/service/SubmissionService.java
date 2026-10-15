@@ -348,7 +348,7 @@ public class SubmissionService {
         if (submission.getListingId() != null) {
             // Updating existing live listing from a revision
             listing = listingRepository.findById(submission.getListingId())
-                    .orElseGet(Listing::new);
+                    .orElseThrow(() -> new ResourceNotFoundException("Referenced live listing #" + submission.getListingId() + " not found"));
         } else {
             // Creating a new live listing
             listing = new Listing();

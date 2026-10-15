@@ -69,19 +69,7 @@ public class AuthController {
     ) {
         verifyOrigin(request);
 
-        String token = cookieRefreshToken;
-        if (token == null || token.isBlank()) {
-            token = headerRefreshToken;
-        }
-        if (token == null || token.isBlank()) {
-            if (bodyRequest != null && bodyRequest.getRefreshToken() != null) {
-                token = bodyRequest.getRefreshToken();
-            }
-        }
-        if (token == null || token.isBlank()) {
-            token = extractCookie(request, "refresh_token");
-        }
-
+        String token = resolveRefreshToken(request, cookieRefreshToken, headerRefreshToken, bodyRequest);
         AuthService.AuthResult result = authService.refreshSession(token);
         setRefreshTokenCookie(response, result.rawRefreshToken());
         return ResponseEntity.ok(new AuthResponse(result.accessToken(), result.rawRefreshToken(), result.user()));
@@ -100,65 +88,53 @@ public class AuthController {
     ) {
         verifyOrigin(request);
 
-        String token = cookieRefreshToken;
-        if (token == null || token.isBlank()) {
-            token = headerRefreshToken;
-        }
-        if (token == null || token.isBlank()) {
-            if (bodyRequest != null && bodyRequest.getRefreshToken() != null) {
-                token = bodyRequest.getRefreshToken();
-            }
-        }
-        if (token == null || token.isBlank()) {
-            token = extractCookie(request, "refresh_token");
-        }
-
+        String token = resolveRefreshToken(request, cookieRefreshToken, headerRefreshToken, bodyRequest);
         authService.logout(token);
         clearRefreshTokenCookie(response);
         return ResponseEntity.ok().build();
     }
 
-    private void verifyOrigin(HttpServletRequest request) {
-        // If request provides token explicitly via X-Refresh-Token header, CSRF is not applicable
-        if (request.getHeader("X-Refresh-Token") != null && !request.getHeader("X-Refresh-Token").isBlank()) {
-            return;
+    private String resolveRefreshToken(
+        HttpServletRequest request,
+        String cookieRefreshToken,
+        String headerRefreshToken,
+        RefreshTokenRequest bodyRequest
+    ) {
+        if (cookieRefreshToken != null && !cookieRefreshToken.isBlank()) {
+            return cookieRefreshToken.trim();
         }
+        if (headerRefreshToken != null && !headerRefreshToken.isBlank()) {
+            return headerRefreshToken.trim();
+        }
+        if (bodyRequest != null && bodyRequest.getRefreshToken() != null && !bodyRequest.getRefreshToken().isBlank()) {
+            return bodyRequest.getRefreshToken().trim();
+        }
+        return extractCookie(request, "refresh_token");
+    }
 
+    private void verifyOrigin(HttpServletRequest request) {
         String origin = request.getHeader("Origin");
         if (origin == null || origin.isBlank()) {
             return;
         }
 
         String normalizedOrigin = origin.trim().replaceAll("/+$", "");
-        String normalizedFrontend = frontendOrigin.trim().replaceAll("/+$", "");
+        String normalizedFrontend = frontendOrigin != null ? frontendOrigin.trim().replaceAll("/+$", "") : "";
 
-        if (normalizedOrigin.equalsIgnoreCase(normalizedFrontend)) {
+        if (!normalizedFrontend.isEmpty() && normalizedOrigin.equalsIgnoreCase(normalizedFrontend)) {
             return;
         }
 
         if (allowedOrigins != null) {
             for (String allowed : allowedOrigins.split(",")) {
                 String normalizedAllowed = allowed.trim().replaceAll("/+$", "");
-                if (normalizedAllowed.equalsIgnoreCase(normalizedOrigin) || "*".equals(normalizedAllowed)) {
+                if (!normalizedAllowed.isEmpty() && normalizedAllowed.equalsIgnoreCase(normalizedOrigin)) {
                     return;
                 }
             }
         }
 
-        try {
-            java.net.URI uri = java.net.URI.create(origin);
-            String host = uri.getHost();
-            if (host != null && (
-                host.equalsIgnoreCase("localhost") ||
-                host.equals("127.0.0.1") ||
-                host.endsWith(".vercel.app") ||
-                host.endsWith(".onrender.com") ||
-                host.endsWith(".pages.dev")
-            )) {
-                return;
-            }
-        } catch (Exception ignored) {
-        }
+        throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden: Invalid request origin");
     }
 
     private void setRefreshTokenCookie(HttpServletResponse response, String refreshToken) {
