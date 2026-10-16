@@ -49,13 +49,20 @@ public class SecurityConfig {
                 .requestMatchers("/", "/health").permitAll()
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/listings/**").permitAll()
+                .requestMatchers("/api/ads/active").permitAll()
+                .requestMatchers("/api/ads/campaigns/*/impressions", "/api/ads/campaigns/*/click").permitAll()
+                .requestMatchers("/api/notifications/vapid-public-key").permitAll()
                 .requestMatchers("/error").permitAll()
                 // Admin secured endpoints
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                // Client & Admin campaign and announcement endpoints
+                .requestMatchers("/api/submissions/**").hasAnyRole("CLIENT", "ADMIN")
+                .requestMatchers("/api/ads/campaigns", "/api/ads/my-campaigns", "/api/ads/audience-estimate", "/api/ads/campaigns/*/pause", "/api/ads/campaigns/*/resume").hasAnyRole("CLIENT", "ADMIN")
+                .requestMatchers("/api/announcements/**").hasAnyRole("CLIENT", "ADMIN")
                 // User signed-in endpoints
                 .requestMatchers("/api/me/**").authenticated()
-                // Client & Admin advertisement endpoints
-                .requestMatchers("/api/submissions/**").hasAnyRole("CLIENT", "ADMIN")
+                .requestMatchers("/api/notifications/**").authenticated()
+                .requestMatchers("/api/ads/campaigns/*/report").authenticated()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)

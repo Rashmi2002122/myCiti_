@@ -23,4 +23,31 @@ public interface UserRepository extends JpaRepository<User, Long> {
                LOWER(u.businessName) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%')))
     """)
     Page<User> searchUsers(@Param("q") String q, Pageable pageable);
+
+    @Query("""
+        SELECT u FROM User u
+        WHERE u.coarseLat IS NOT NULL AND u.coarseLng IS NOT NULL
+          AND u.coarseLat BETWEEN :minLat AND :maxLat
+          AND u.coarseLng BETWEEN :minLng AND :maxLng
+          AND u.status = com.myciti.model.UserStatus.ACTIVE
+    """)
+    java.util.List<User> findActiveUsersInBoundingBox(
+        @Param("minLat") Double minLat,
+        @Param("maxLat") Double maxLat,
+        @Param("minLng") Double minLng,
+        @Param("maxLng") Double maxLng
+    );
+
+    @Query("""
+        SELECT u FROM User u
+        WHERE u.status = com.myciti.model.UserStatus.ACTIVE
+          AND (u.areaName IS NOT NULL AND LOWER(u.areaName) LIKE LOWER(CONCAT('%', :city, '%')))
+    """)
+    java.util.List<User> findActiveUsersByAreaName(@Param("city") String city);
+
+    @Query("""
+        SELECT u FROM User u
+        WHERE u.status = com.myciti.model.UserStatus.ACTIVE
+    """)
+    java.util.List<User> findAllActiveUsers();
 }
