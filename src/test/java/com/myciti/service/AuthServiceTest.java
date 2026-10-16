@@ -59,7 +59,7 @@ public class AuthServiceTest {
     }
 
     @Test
-    void loginWithGoogle_newUser_assignedSubmitterRole() {
+    void loginWithGoogle_newUser_assignedUserRole() {
         GoogleUserInfo googleUser = new GoogleUserInfo("sub-123", "user@example.com", true, "John Doe", "https://pic.jpg");
         when(googleTokenVerifierService.verifyToken("valid-token")).thenReturn(googleUser);
         when(userRepository.findByGoogleSub("sub-123")).thenReturn(Optional.empty());
@@ -74,9 +74,27 @@ public class AuthServiceTest {
 
         assertNotNull(result);
         assertEquals("mock-access-token", result.accessToken());
-        assertEquals(Role.SUBMITTER, result.user().getRole());
+        assertEquals(Role.USER, result.user().getRole());
         assertEquals("user@example.com", result.user().getEmail());
         verify(refreshTokenRepository).save(any(RefreshToken.class));
+    }
+
+    @Test
+    void loginWithGoogle_existingClient_preservesClientRole() {
+        User clientUser = new User("sub-client", "client@example.com", "Client Store", null);
+        clientUser.setId(2L);
+        clientUser.setRole(Role.CLIENT);
+
+        GoogleUserInfo googleUser = new GoogleUserInfo("sub-client", "client@example.com", true, "Client Store", null);
+        when(googleTokenVerifierService.verifyToken("client-token")).thenReturn(googleUser);
+        when(userRepository.findByGoogleSub("sub-client")).thenReturn(Optional.of(clientUser));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(jwtProvider.generateToken(any(), any(), any(), anyBoolean())).thenReturn("client-access-token");
+
+        AuthService.AuthResult result = authService.loginWithGoogle("client-token");
+
+        assertNotNull(result);
+        assertEquals(Role.CLIENT, result.user().getRole());
     }
 
     @Test
@@ -98,7 +116,7 @@ public class AuthServiceTest {
     }
 
     @Test
-    void loginWithGoogle_emailRemovedFromAdminEmails_downgradesToSubmitter() {
+    void loginWithGoogle_emailRemovedFromAdminEmails_downgradesToUser() {
         User existingUser = new User("sub-former-admin", "formeradmin@example.com", "Former Admin", null);
         existingUser.setId(10L);
         existingUser.setRole(Role.ADMIN);
@@ -111,7 +129,7 @@ public class AuthServiceTest {
 
         AuthService.AuthResult result = authService.loginWithGoogle("token");
 
-        assertEquals(Role.SUBMITTER, result.user().getRole());
+        assertEquals(Role.USER, result.user().getRole());
     }
 
     @Test
@@ -123,7 +141,6 @@ public class AuthServiceTest {
         GoogleUserInfo googleUser = new GoogleUserInfo("sub-suspended", "bad@example.com", true, "Bad Actor", null);
         when(googleTokenVerifierService.verifyToken("bad-token")).thenReturn(googleUser);
         when(userRepository.findByGoogleSub("sub-suspended")).thenReturn(Optional.of(suspendedUser));
-        when(userRepository.save(any(User.class))).thenReturn(suspendedUser);
 
         assertThrows(AccessDeniedException.class, () -> authService.loginWithGoogle("bad-token"));
     }
@@ -181,13 +198,15 @@ public class AuthServiceTest {
         // Simulate user already having 5 active tokens (exceeding cap of 4 before adding new)
         java.util.List<RefreshToken> existingActive = new java.util.ArrayList<>();
         for (int i = 0; i < 5; i++) {
-            existingActive.add(new RefreshToken(user, "hash-" + i, java.time.Instant.now().plusSeconds(3600)));
+            RefreshToken token = new RefreshToken(user, "hash-" + i, java.time.Instant.now().plusSeconds(3600));
+            token.setId((long) (i + 1));
+            existingActive.add(token);
         }
         when(refreshTokenRepository.findByUser_IdAndRevokedAtIsNullOrderByCreatedAtDesc(50L)).thenReturn(existingActive);
 
         authService.loginWithGoogle("cap-token");
 
-        // Oldest token (at index 4) should have been revoked
-        assertNotNull(existingActive.get(4).getRevokedAt());
+        // Oldest token (at index 4 with ID 5L) should have been revoked via repository
+        verify(refreshTokenRepository).revokeByIds(eq(java.util.List.of(5L)), any(Instant.class));
     }
 }

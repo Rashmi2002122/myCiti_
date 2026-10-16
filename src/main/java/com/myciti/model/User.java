@@ -34,7 +34,7 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
-    private Role role = Role.SUBMITTER;
+    private Role role = Role.USER;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
@@ -56,7 +56,7 @@ public class User {
         this.email = email;
         this.name = name;
         this.pictureUrl = pictureUrl;
-        this.role = Role.SUBMITTER;
+        this.role = Role.USER;
         this.status = UserStatus.ACTIVE;
         this.profileComplete = false;
         this.createdAt = Instant.now();

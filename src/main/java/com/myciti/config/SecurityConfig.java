@@ -54,7 +54,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // User signed-in endpoints
                 .requestMatchers("/api/me/**").authenticated()
-                .requestMatchers("/api/submissions/**").authenticated()
+                // Client & Admin advertisement endpoints
+                .requestMatchers("/api/submissions/**").hasAnyRole("CLIENT", "ADMIN")
                 .anyRequest().authenticated()
             )
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)

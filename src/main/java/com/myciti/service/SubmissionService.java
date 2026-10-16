@@ -67,6 +67,10 @@ public class SubmissionService {
     public SubmissionResponse createSubmission(Long userId, SubmissionRequest req) {
         User user = getUserOrThrow(userId);
 
+        if (user.getRole() != Role.CLIENT && user.getRole() != Role.ADMIN) {
+            throw new AccessDeniedException("Only CLIENT and ADMIN accounts can post advertisements and listings.");
+        }
+
         // Rule 8: Profile must be complete before submitting
         if (!user.isProfileComplete()) {
             throw new IllegalArgumentException("Please complete your profile before posting an advertisement");

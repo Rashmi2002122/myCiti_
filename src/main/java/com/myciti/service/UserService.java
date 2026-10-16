@@ -6,6 +6,7 @@ import com.myciti.dto.UserDto;
 import com.myciti.exception.ResourceNotFoundException;
 import com.myciti.model.AccountType;
 import com.myciti.model.AuditLog;
+import com.myciti.model.Role;
 import com.myciti.model.User;
 import com.myciti.model.UserStatus;
 import com.myciti.repository.AuditLogRepository;
@@ -81,6 +82,11 @@ public class UserService {
         user.setBusinessName(businessName);
         user.setPhone(phone);
         user.setProfileComplete(true);
+
+        // A consumer who sets up their business profile transitions to CLIENT
+        if (user.getRole() == Role.USER) {
+            user.setRole(Role.CLIENT);
+        }
 
         User saved = userRepository.save(user);
         return mapToDto(saved);
