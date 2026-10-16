@@ -1,8 +1,10 @@
 package com.myciti.service;
 
 import com.myciti.dto.AuditLogDto;
+import com.myciti.dto.UpdateLocationRequest;
 import com.myciti.dto.UpdateProfileRequest;
 import com.myciti.dto.UserDto;
+import com.myciti.dto.UserLocationDto;
 import com.myciti.exception.ResourceNotFoundException;
 import com.myciti.model.AccountType;
 import com.myciti.model.AuditLog;
@@ -10,6 +12,7 @@ import com.myciti.model.Role;
 import com.myciti.model.User;
 import com.myciti.model.UserStatus;
 import com.myciti.repository.AuditLogRepository;
+import com.myciti.repository.PushSubscriptionRepository;
 import com.myciti.repository.RefreshTokenRepository;
 import com.myciti.repository.UserRepository;
 import org.springframework.data.domain.Page;
@@ -26,15 +29,18 @@ public class UserService {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final AuditLogRepository auditLogRepository;
+    private final PushSubscriptionRepository pushSubscriptionRepository;
 
     public UserService(
         UserRepository userRepository,
         RefreshTokenRepository refreshTokenRepository,
-        AuditLogRepository auditLogRepository
+        AuditLogRepository auditLogRepository,
+        PushSubscriptionRepository pushSubscriptionRepository
     ) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.auditLogRepository = auditLogRepository;
+        this.pushSubscriptionRepository = pushSubscriptionRepository;
     }
 
     /**
@@ -90,6 +96,58 @@ public class UserService {
 
         User saved = userRepository.save(user);
         return mapToDto(saved);
+    }
+
+    /**
+     * Update user's coarse location (~1km precision).
+     * Enforces rounding to 2 decimal places.
+     * Never stores exact coordinates or location history.
+     * Does NOT log coordinates.
+     */
+    @Transactional
+    public UserLocationDto updateCoarseLocation(Long userId, UpdateLocationRequest req) {
+        User user = findUserById(userId);
+
+        Double coarseLat = null;
+        Double coarseLng = null;
+        if (req.getLatitude() != null && req.getLongitude() != null) {
+            // Round to 2 decimal places (~1.1km precision)
+            coarseLat = Math.round(req.getLatitude() * 100.0) / 100.0;
+            coarseLng = Math.round(req.getLongitude() * 100.0) / 100.0;
+        }
+
+        user.setCoarseLat(coarseLat);
+        user.setCoarseLng(coarseLng);
+        user.setAreaName(sanitize(req.getAreaName()));
+        user.setLocationUpdatedAt(Instant.now());
+
+        User saved = userRepository.save(user);
+        return new UserLocationDto(saved.getCoarseLat(), saved.getCoarseLng(), saved.getAreaName(), saved.getLocationUpdatedAt());
+    }
+
+    /**
+     * Get user's current coarse location setting.
+     */
+    @Transactional(readOnly = true)
+    public UserLocationDto getCoarseLocation(Long userId) {
+        User user = findUserById(userId);
+        return new UserLocationDto(user.getCoarseLat(), user.getCoarseLng(), user.getAreaName(), user.getLocationUpdatedAt());
+    }
+
+    /**
+     * Privacy action: delete stored coarse location and remove all push subscriptions.
+     */
+    @Transactional
+    public void deleteLocationData(Long userId) {
+        User user = findUserById(userId);
+        user.setCoarseLat(null);
+        user.setCoarseLng(null);
+        user.setAreaName(null);
+        user.setLocationUpdatedAt(null);
+        userRepository.save(user);
+
+        // Delete all push subscriptions for this user
+        pushSubscriptionRepository.deleteByUser_Id(userId);
     }
 
     /**

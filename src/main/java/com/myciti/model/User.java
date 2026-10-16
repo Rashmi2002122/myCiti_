@@ -49,6 +49,18 @@ public class User {
     @Column(name = "last_login_at", nullable = false)
     private Instant lastLoginAt = Instant.now();
 
+    @Column(name = "coarse_lat")
+    private Double coarseLat;
+
+    @Column(name = "coarse_lng")
+    private Double coarseLng;
+
+    @Column(name = "area_name", length = 100)
+    private String areaName;
+
+    @Column(name = "location_updated_at")
+    private Instant locationUpdatedAt;
+
     public User() {}
 
     public User(String googleSub, String email, String name, String pictureUrl) {
@@ -165,5 +177,37 @@ public class User {
 
     public void setLastLoginAt(Instant lastLoginAt) {
         this.lastLoginAt = lastLoginAt;
+    }
+
+    public Double getCoarseLat() {
+        return coarseLat;
+    }
+
+    public void setCoarseLat(Double coarseLat) {
+        this.coarseLat = coarseLat;
+    }
+
+    public Double getCoarseLng() {
+        return coarseLng;
+    }
+
+    public void setCoarseLng(Double coarseLng) {
+        this.coarseLng = coarseLng;
+    }
+
+    public String getAreaName() {
+        return areaName;
+    }
+
+    public void setAreaName(String areaName) {
+        this.areaName = areaName;
+    }
+
+    public Instant getLocationUpdatedAt() {
+        return locationUpdatedAt;
+    }
+
+    public void setLocationUpdatedAt(Instant locationUpdatedAt) {
+        this.locationUpdatedAt = locationUpdatedAt;
     }
 }
