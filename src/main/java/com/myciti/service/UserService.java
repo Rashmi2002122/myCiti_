@@ -89,9 +89,16 @@ public class UserService {
         user.setPhone(phone);
         user.setProfileComplete(true);
 
-        // A consumer who sets up their business profile transitions to CLIENT
-        if (user.getRole() == Role.USER) {
-            user.setRole(Role.CLIENT);
+        // Role transitions:
+        // - ADMIN role is immutable through profile updates.
+        // - STORE or COMPANY accounts are business owners -> Role.CLIENT.
+        // - INDIVIDUAL accounts are regular consumers -> Role.USER.
+        if (user.getRole() != Role.ADMIN) {
+            if (accountType == AccountType.STORE || accountType == AccountType.COMPANY) {
+                user.setRole(Role.CLIENT);
+            } else {
+                user.setRole(Role.USER);
+            }
         }
 
         User saved = userRepository.save(user);
