@@ -59,6 +59,37 @@ public class UserServiceTest {
         assertEquals(AccountType.INDIVIDUAL, result.getAccountType());
         assertEquals("9830112233", result.getPhone());
         assertNull(result.getBusinessName());
+        assertEquals(com.myciti.model.Role.USER, result.getRole());
+    }
+
+    @Test
+    void updateProfile_store_promotesToClient() {
+        User user = new User("sub-store", "biz@test.com", "Business Owner", null);
+        user.setId(10L);
+        when(userRepository.findById(10L)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateProfileRequest request = new UpdateProfileRequest(AccountType.STORE, "My Sweets Shop", "9830112233");
+        UserDto result = userService.updateProfile(10L, request);
+
+        assertTrue(result.isProfileComplete());
+        assertEquals(AccountType.STORE, result.getAccountType());
+        assertEquals("My Sweets Shop", result.getBusinessName());
+        assertEquals(com.myciti.model.Role.CLIENT, result.getRole());
+    }
+
+    @Test
+    void updateProfile_adminUser_retainsAdminRole() {
+        User user = new User("sub-admin", "admin@test.com", "Admin Person", null);
+        user.setId(99L);
+        user.setRole(com.myciti.model.Role.ADMIN);
+        when(userRepository.findById(99L)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateProfileRequest request = new UpdateProfileRequest(AccountType.INDIVIDUAL, null, "9830112233");
+        UserDto result = userService.updateProfile(99L, request);
+
+        assertEquals(com.myciti.model.Role.ADMIN, result.getRole());
     }
 
     @Test
