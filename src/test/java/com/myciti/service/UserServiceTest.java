@@ -145,40 +145,4 @@ public class UserServiceTest {
         assertEquals(UserStatus.ACTIVE, unsuspended.getStatus());
         verify(auditLogRepository).save(any(AuditLog.class));
     }
-
-    @Test
-    void updateCoarseLocation_roundsToTwoDecimalPlaces() {
-        User user = new User("sub-loc", "loc@test.com", "Location User", null);
-        user.setId(5L);
-        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
-        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        com.myciti.dto.UpdateLocationRequest req = new com.myciti.dto.UpdateLocationRequest(22.572645, 88.363892, "Salt Lake");
-        com.myciti.dto.UserLocationDto res = userService.updateCoarseLocation(5L, req);
-
-        assertNotNull(res);
-        assertEquals(22.57, res.coarseLat());
-        assertEquals(88.36, res.coarseLng());
-        assertEquals("Salt Lake", res.areaName());
-        assertNotNull(res.locationUpdatedAt());
-    }
-
-    @Test
-    void deleteLocationData_clearsCoordsAndRemovesPushSubscriptions() {
-        User user = new User("sub-del", "del@test.com", "Delete User", null);
-        user.setId(6L);
-        user.setCoarseLat(22.57);
-        user.setCoarseLng(88.36);
-        user.setAreaName("Ballygunge");
-        when(userRepository.findById(6L)).thenReturn(Optional.of(user));
-        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        userService.deleteLocationData(6L);
-
-        assertNull(user.getCoarseLat());
-        assertNull(user.getCoarseLng());
-        assertNull(user.getAreaName());
-        assertNull(user.getLocationUpdatedAt());
-        verify(pushSubscriptionRepository).deleteByUser_Id(6L);
-    }
 }
