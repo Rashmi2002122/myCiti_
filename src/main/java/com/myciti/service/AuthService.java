@@ -100,8 +100,16 @@ public class AuthService {
         user.setEmail(googleUser.getEmail().toLowerCase().trim());
         user.setLastLoginAt(Instant.now());
 
-        // Role decided only on server: ADMIN if email in ADMIN_EMAILS (re-checked on every login)
-        Role calculatedRole = adminEmails.contains(user.getEmail().toLowerCase()) ? Role.ADMIN : Role.SUBMITTER;
+        // Role decided on server: ADMIN if email in ADMIN_EMAILS (re-checked on every login),
+        // CLIENT preserved for store/business owners, otherwise default to USER (consumer)
+        Role calculatedRole;
+        if (adminEmails.contains(user.getEmail().toLowerCase())) {
+            calculatedRole = Role.ADMIN;
+        } else if (user.getRole() == Role.CLIENT) {
+            calculatedRole = Role.CLIENT;
+        } else {
+            calculatedRole = Role.USER;
+        }
         user.setRole(calculatedRole);
 
         user = userRepository.save(user);

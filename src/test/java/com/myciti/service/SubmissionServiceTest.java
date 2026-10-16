@@ -72,13 +72,13 @@ public class SubmissionServiceTest {
         testUser.setId(1L);
         testUser.setPhone("9830112233");
         testUser.setProfileComplete(true);
-        testUser.setRole(Role.SUBMITTER);
+        testUser.setRole(Role.CLIENT);
 
         otherUser = new User("sub-2", "user2@example.com", "User Two", null);
         otherUser.setId(2L);
         otherUser.setPhone("9830223344");
         otherUser.setProfileComplete(true);
-        otherUser.setRole(Role.SUBMITTER);
+        otherUser.setRole(Role.CLIENT);
     }
 
     private SubmissionRequest createValidRequest() {
@@ -118,6 +118,16 @@ public class SubmissionServiceTest {
         assertEquals("Ballygunge Cultural Pandal", res.getTitle());
         assertEquals(SubmissionStatus.PENDING, res.getStatus());
         assertEquals("9830112233", res.getContactPhone());
+    }
+
+    @Test
+    void createSubmission_consumerUserRole_throwsAccessDeniedException() {
+        testUser.setRole(Role.USER);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+
+        SubmissionRequest req = createValidRequest();
+        assertThrows(AccessDeniedException.class, () ->
+                submissionService.createSubmission(1L, req));
     }
 
     @Test
@@ -191,7 +201,7 @@ public class SubmissionServiceTest {
         sub.setUser(otherUser);
 
         when(submissionRepository.findById(10L)).thenReturn(Optional.of(sub));
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser)); // testUser is SUBMITTER, not ADMIN
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser)); // testUser is CLIENT, not ADMIN
 
         assertThrows(AccessDeniedException.class, () ->
                 submissionService.getSubmissionById(10L, 1L));
