@@ -9,18 +9,21 @@ import com.myciti.model.User;
 import com.myciti.repository.InAppNotificationRepository;
 import com.myciti.repository.PushSubscriptionRepository;
 import com.myciti.repository.UserRepository;
+import jakarta.annotation.PostConstruct;
+import nl.martijndwars.web_push.Notification;
+import nl.martijndwars.web_push.PushService;
+import org.apache.http.HttpResponse;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import java.nio.charset.StandardCharsets;
+import java.security.Security;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class NotificationService {
@@ -30,13 +33,17 @@ public class NotificationService {
     private final PushSubscriptionRepository pushSubscriptionRepository;
     private final InAppNotificationRepository inAppNotificationRepository;
     private final UserRepository userRepository;
-    private final HttpClient httpClient;
 
     @Value("${app.webpush.public-key:}")
     private String vapidPublicKey;
 
+    @Value("${app.webpush.private-key:}")
+    private String vapidPrivateKey;
+
     @Value("${app.webpush.subject:mailto:admin@myciti.com}")
     private String vapidSubject;
+
+    private PushService pushService;
 
     public NotificationService(
         PushSubscriptionRepository pushSubscriptionRepository,
@@ -46,9 +53,23 @@ public class NotificationService {
         this.pushSubscriptionRepository = pushSubscriptionRepository;
         this.inAppNotificationRepository = inAppNotificationRepository;
         this.userRepository = userRepository;
-        this.httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .build();
+    }
+
+    @PostConstruct
+    public void initPushService() {
+        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+            Security.addProvider(new BouncyCastleProvider());
+        }
+        if (vapidPublicKey != null && !vapidPublicKey.isBlank() && vapidPrivateKey != null && !vapidPrivateKey.isBlank()) {
+            try {
+                this.pushService = new PushService(vapidPublicKey, vapidPrivateKey, vapidSubject);
+                log.info("[WebPush] PushService initialized successfully with VAPID subject: {}", vapidSubject);
+            } catch (Exception e) {
+                log.error("[WebPush] Failed to initialize PushService with VAPID keys", e);
+            }
+        } else {
+            log.warn("[WebPush] VAPID keys not configured; background push delivery will be disabled.");
+        }
     }
 
     public String getVapidPublicKey() {
@@ -160,28 +181,28 @@ public class NotificationService {
             escapeJson(title), escapeJson(message), linkUrl != null ? escapeJson(linkUrl) : "/");
 
         for (PushSubscription sub : subs) {
-            try {
-                HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(sub.getEndpoint()))
-                    .header("Content-Type", "application/json")
-                    .header("TTL", "86400")
-                    .timeout(Duration.ofSeconds(6))
-                    .POST(HttpRequest.BodyPublishers.ofString(payload));
-
-                httpClient.sendAsync(reqBuilder.build(), HttpResponse.BodyHandlers.discarding())
-                    .thenAccept(res -> {
-                        if (res.statusCode() == 404 || res.statusCode() == 410) {
+            CompletableFuture.runAsync(() -> {
+                try {
+                    if (pushService != null && sub.getP256dh() != null && sub.getAuth() != null) {
+                        Notification notification = new Notification(
+                            sub.getEndpoint(),
+                            sub.getP256dh(),
+                            sub.getAuth(),
+                            payload.getBytes(StandardCharsets.UTF_8)
+                        );
+                        HttpResponse response = pushService.send(notification);
+                        int status = response.getStatusLine().getStatusCode();
+                        if (status == 404 || status == 410) {
                             log.info("[WebPush] Pruning expired endpoint: {}", sub.getEndpoint());
                             pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
+                        } else {
+                            log.debug("[WebPush] Successfully pushed notification to user #{}, status: {}", userId, status);
                         }
-                    })
-                    .exceptionally(ex -> {
-                        log.debug("[WebPush] Delivery attempt completed for user #{}", userId);
-                        return null;
-                    });
-            } catch (Exception e) {
-                log.debug("[WebPush] Failed to prepare push message: {}", e.getMessage());
-            }
+                    }
+                } catch (Exception e) {
+                    log.warn("[WebPush] Failed push delivery to user #{}: {}", userId, e.getMessage());
+                }
+            });
         }
     }
 
