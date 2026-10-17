@@ -25,9 +25,13 @@ import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Service
 public class SubmissionService {
 
+    private static final Logger log = LoggerFactory.getLogger(SubmissionService.class);
     private static final Pattern PHONE_PATTERN = Pattern.compile("^[6-9]\\d{9}$");
 
     private final SubmissionRepository submissionRepository;
@@ -350,9 +354,13 @@ public class SubmissionService {
 
         Listing listing;
         if (submission.getListingId() != null) {
-            // Updating existing live listing from a revision
+            // Updating existing live listing from a revision (fallback to new listing if live listing was previously deleted)
             listing = listingRepository.findById(submission.getListingId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Referenced live listing #" + submission.getListingId() + " not found"));
+                    .orElseGet(() -> {
+                        log.warn("Referenced live listing #{} for submission #{} was not found (may have been deleted). Creating a new live listing.",
+                                submission.getListingId(), id);
+                        return new Listing();
+                    });
         } else {
             // Creating a new live listing
             listing = new Listing();

@@ -502,4 +502,43 @@ public class SubmissionServiceTest {
         assertEquals("Updated Title Revision", existingListing.getTitle());
         verify(listingRepository).save(existingListing);
     }
+
+    @Test
+    void approveSubmission_revisionWhenReferencedListingDeleted_createsNewListingInstead() {
+        Submission sub = new Submission();
+        sub.setId(21L);
+        sub.setStatus(SubmissionStatus.PENDING);
+        sub.setListingId(16L); // Points to deleted listing #16
+        sub.setTitle("Pandal With Deleted Original");
+        sub.setCategory(Category.PANDAL);
+        sub.setDescription("Description");
+        sub.setAddress("Address");
+        sub.setLandmark("Landmark");
+        sub.setLatitude(22.50);
+        sub.setLongitude(88.35);
+        sub.setStartDate(LocalDate.now());
+        sub.setEndDate(LocalDate.now().plusDays(5));
+        sub.setDailyOpenTime(LocalTime.of(8, 0));
+        sub.setDailyCloseTime(LocalTime.of(22, 0));
+        sub.setContactPhone("9830112233");
+
+        when(submissionRepository.findById(21L)).thenReturn(Optional.of(sub));
+        // Listing #16 is deleted from DB
+        when(listingRepository.findById(16L)).thenReturn(Optional.empty());
+        when(listingRepository.save(any(Listing.class))).thenAnswer(inv -> {
+            Listing l = inv.getArgument(0);
+            l.setId(999L);
+            return l;
+        });
+        when(submissionRepository.save(any(Submission.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        User adminUser = new User("admin-sub", "admin@myciti.com", "Admin", null);
+        adminUser.setId(99L);
+
+        SubmissionResponse res = submissionService.approveSubmission(21L, adminUser);
+
+        assertEquals(SubmissionStatus.APPROVED, res.getStatus());
+        assertEquals(999L, res.getListingId());
+        verify(listingRepository).save(any(Listing.class));
+    }
 }
