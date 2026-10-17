@@ -1,25 +1,28 @@
 package com.myciti.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.myciti.model.TargetType;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class AdCampaignRequest {
 
     @NotNull(message = "Listing ID is required")
     private Long listingId;
 
-    @NotBlank(message = "Campaign title is required")
     @Size(max = 150, message = "Campaign title cannot exceed 150 characters")
     private String title;
 
     @Size(max = 255, message = "Headline cannot exceed 255 characters")
     private String headline;
+
+    private String description;
+    private String callToAction;
 
     @NotNull(message = "Target type is required")
     private TargetType targetType = TargetType.RADIUS;
@@ -120,5 +123,31 @@ public class AdCampaignRequest {
 
     public void setEndDate(LocalDate endDate) {
         this.endDate = endDate;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String getCallToAction() {
+        return callToAction;
+    }
+
+    public void setCallToAction(String callToAction) {
+        this.callToAction = callToAction;
+    }
+
+    public String getTargetAreaName() {
+        return targetCity;
+    }
+
+    public void setTargetAreaName(String targetAreaName) {
+        if (this.targetCity == null || this.targetCity.isBlank()) {
+            this.targetCity = targetAreaName;
+        }
     }
 }

@@ -146,4 +146,17 @@ public class AdCampaignController {
         if (user == null) return ResponseEntity.status(401).build();
         return ResponseEntity.ok(adCampaignService.resumeCampaign(user.getId(), id));
     }
+
+    /**
+     * Client / Admin: delete campaign.
+     */
+    @DeleteMapping("/campaigns/{id}")
+    public ResponseEntity<Void> deleteCampaign(
+        @AuthenticationPrincipal User user,
+        @PathVariable Long id
+    ) {
+        if (user == null) return ResponseEntity.status(401).build();
+        adCampaignService.deleteCampaign(user.getId(), id);
+        return ResponseEntity.noContent().build();
+    }
 }
