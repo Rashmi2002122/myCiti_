@@ -5,14 +5,13 @@
           https://maven.apache.org/xsd/settings-1.0.0.xsd">
   <mirrors>
     <!--
-      repo1.maven.org is the primary Maven Central replica.
-      It avoids 429 rate-limits that hit repo.maven.apache.org
-      on shared Render build IPs.
+      Use Google's Maven Central mirror — it does NOT rate-limit the way
+      repo.maven.apache.org and repo1.maven.org do on shared build IPs.
     -->
     <mirror>
-      <id>central-repo1</id>
-      <name>Maven Central (repo1 primary)</name>
-      <url>https://repo1.maven.org/maven2</url>
+      <id>google-maven-central</id>
+      <name>Google Maven Central Mirror</name>
+      <url>https://maven-central.storage-download.googleapis.com/maven2/</url>
       <mirrorOf>central</mirrorOf>
     </mirror>
   </mirrors>
