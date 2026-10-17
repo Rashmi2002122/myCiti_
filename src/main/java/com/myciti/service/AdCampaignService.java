@@ -70,7 +70,17 @@ public class AdCampaignService {
         AdCampaign campaign = new AdCampaign();
         campaign.setListing(listing);
         campaign.setClientUser(user);
-        campaign.setTitle(req.getTitle().trim());
+
+        // Robust title fallback: title -> headline -> listing title
+        String rawTitle = req.getTitle();
+        if (rawTitle == null || rawTitle.isBlank()) {
+            rawTitle = (req.getHeadline() != null && !req.getHeadline().isBlank())
+                ? req.getHeadline()
+                : (listing.getTitle() != null ? listing.getTitle() + " Promotion" : "Ad Campaign");
+        }
+        String cleanTitle = rawTitle.trim();
+        campaign.setTitle(cleanTitle.length() > 150 ? cleanTitle.substring(0, 150) : cleanTitle);
+
         campaign.setHeadline(req.getHeadline() != null ? req.getHeadline().trim() : null);
         campaign.setTargetType(req.getTargetType());
 
@@ -82,7 +92,12 @@ public class AdCampaignService {
 
         double radius = req.getRadiusKm() != null ? req.getRadiusKm() : 5.0;
         campaign.setRadiusKm(Math.max(0.5, Math.min(25.0, radius)));
-        campaign.setTargetCity(req.getTargetCity() != null && !req.getTargetCity().isBlank() ? req.getTargetCity().trim() : listing.getCity());
+
+        String resolvedCity = req.getTargetCity();
+        if (resolvedCity == null || resolvedCity.isBlank()) {
+            resolvedCity = listing.getCity();
+        }
+        campaign.setTargetCity(resolvedCity != null && !resolvedCity.isBlank() ? resolvedCity.trim() : "Kolkata");
 
         campaign.setStartDate(req.getStartDate());
         campaign.setEndDate(req.getEndDate());
@@ -261,6 +276,13 @@ public class AdCampaignService {
         campaign.setRejectionReason(reason);
         campaign.setUpdatedAt(Instant.now());
         return AdCampaignResponse.fromEntity(adCampaignRepository.save(campaign));
+    }
+
+    @Transactional
+    public void deleteCampaign(Long userId, Long campaignId) {
+        AdCampaign campaign = getCampaignOrThrow(campaignId);
+        checkManagePermission(userId, campaign);
+        adCampaignRepository.delete(campaign);
     }
 
     @Transactional

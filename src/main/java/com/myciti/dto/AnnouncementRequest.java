@@ -1,5 +1,6 @@
 package com.myciti.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.myciti.model.TargetType;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -7,6 +8,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class AnnouncementRequest {
 
     private Long listingId;
@@ -96,5 +98,15 @@ public class AnnouncementRequest {
 
     public void setTargetCity(String targetCity) {
         this.targetCity = targetCity;
+    }
+
+    public String getTargetAreaName() {
+        return targetCity;
+    }
+
+    public void setTargetAreaName(String targetAreaName) {
+        if (this.targetCity == null || this.targetCity.isBlank()) {
+            this.targetCity = targetAreaName;
+        }
     }
 }

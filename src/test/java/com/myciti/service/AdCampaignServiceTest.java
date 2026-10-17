@@ -158,4 +158,44 @@ public class AdCampaignServiceTest {
         assertEquals(CampaignStatus.APPROVED, res.status());
         assertNull(res.rejectionReason());
     }
+
+    @Test
+    void createCampaign_whenTitleNotProvided_defaultsToHeadline() {
+        when(userRepository.findById(10L)).thenReturn(Optional.of(clientUser));
+        when(listingRepository.findById(100L)).thenReturn(Optional.of(publishedListing));
+        when(submissionRepository.findByListingId(100L)).thenReturn(Optional.of(userSubmission));
+        when(adCampaignRepository.save(any(AdCampaign.class))).thenAnswer(inv -> {
+            AdCampaign c = inv.getArgument(0);
+            c.setId(2L);
+            return c;
+        });
+
+        AdCampaignRequest req = new AdCampaignRequest();
+        req.setListingId(100L);
+        // title is omitted
+        req.setHeadline("Headline Becomes Title Fallback");
+        req.setTargetType(TargetType.RADIUS);
+        req.setRadiusKm(3.0);
+        req.setStartDate(LocalDate.now());
+        req.setEndDate(LocalDate.now().plusDays(7));
+
+        AdCampaignResponse res = adCampaignService.createCampaign(10L, req);
+
+        assertNotNull(res);
+        assertEquals("Headline Becomes Title Fallback", res.title());
+        assertEquals("Headline Becomes Title Fallback", res.headline());
+    }
+
+    @Test
+    void deleteCampaign_ownerClient_success() {
+        AdCampaign campaign = new AdCampaign();
+        campaign.setId(5L);
+        campaign.setClientUser(clientUser);
+
+        when(adCampaignRepository.findById(5L)).thenReturn(Optional.of(campaign));
+        when(userRepository.findById(10L)).thenReturn(Optional.of(clientUser));
+
+        assertDoesNotThrow(() -> adCampaignService.deleteCampaign(10L, 5L));
+        verify(adCampaignRepository).delete(campaign);
+    }
 }
