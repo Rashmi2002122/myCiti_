@@ -163,6 +163,12 @@ public class AnnouncementService {
             a.getTargetCity()
         );
 
+        if (targetRecipients == null || targetRecipients.isEmpty()) {
+            // Graceful fallback: when users haven't configured a coarse area or when broad city targeting,
+            // deliver to all active registered users so community announcements are never lost
+            targetRecipients = userRepository.findAllActiveUsers();
+        }
+
         String linkUrl = a.getListing() != null ? "/?listingId=" + a.getListing().getId() : "/";
         int delivered = notificationService.dispatchNotificationToUsers(
             targetRecipients,
