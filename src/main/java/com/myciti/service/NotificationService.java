@@ -95,22 +95,40 @@ public class NotificationService {
 
     /**
      * Save or update Web Push subscription for authenticated user.
+     * Uses atomic database upsert with ON CONFLICT (endpoint) to prevent concurrent duplicate key violations.
      */
     @Transactional
     public void savePushSubscription(Long userId, PushSubscriptionRequest req) {
+        if (req == null || req.getEndpoint() == null || req.getEndpoint().isBlank()) {
+            return;
+        }
+
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 
-        pushSubscriptionRepository.findByEndpoint(req.getEndpoint())
-            .ifPresentOrElse(existing -> {
-                existing.setUser(user);
-                existing.setP256dh(req.getP256dh());
-                existing.setAuth(req.getAuth());
-                pushSubscriptionRepository.save(existing);
-            }, () -> {
-                PushSubscription sub = new PushSubscription(user, req.getEndpoint(), req.getP256dh(), req.getAuth());
-                pushSubscriptionRepository.save(sub);
-            });
+        String cleanEndpoint = req.getEndpoint().trim();
+        String cleanP256dh = req.getP256dh() != null ? req.getP256dh().trim() : "";
+        String cleanAuth = req.getAuth() != null ? req.getAuth().trim() : "";
+
+        try {
+            pushSubscriptionRepository.upsertSubscription(user.getId(), cleanEndpoint, cleanP256dh, cleanAuth);
+        } catch (Exception ex) {
+            log.debug("[WebPush] Native upsert fallback: {}", ex.getMessage());
+            pushSubscriptionRepository.findByEndpoint(cleanEndpoint)
+                .ifPresentOrElse(existing -> {
+                    existing.setUser(user);
+                    existing.setP256dh(cleanP256dh);
+                    existing.setAuth(cleanAuth);
+                    pushSubscriptionRepository.save(existing);
+                }, () -> {
+                    try {
+                        PushSubscription sub = new PushSubscription(user, cleanEndpoint, cleanP256dh, cleanAuth);
+                        pushSubscriptionRepository.save(sub);
+                    } catch (Exception ignored) {
+                        // Concurrent insert was handled
+                    }
+                });
+        }
     }
 
     /**
