@@ -154,6 +154,16 @@ public class AnnouncementService {
             .toList();
     }
 
+    /**
+     * Admin: delete announcement.
+     */
+    @Transactional
+    public void deleteAnnouncementAdmin(Long announcementId) {
+        Announcement a = announcementRepository.findById(announcementId)
+            .orElseThrow(() -> new ResourceNotFoundException("Announcement not found: " + announcementId));
+        announcementRepository.delete(a);
+    }
+
     private void dispatchAnnouncement(Announcement a) {
         List<User> targetRecipients = geoTargetingService.findTargetUsers(
             a.getTargetType(),
