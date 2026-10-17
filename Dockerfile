@@ -3,13 +3,14 @@
 FROM maven:3.9.6-eclipse-temurin-17 AS builder
 WORKDIR /app
 
-# Cache dependencies
+# Copy pom first, then src — single mvn pass avoids double Maven Central
+# round-trips that trigger 429 rate-limits on shared build IPs.
 COPY pom.xml .
-RUN mvn dependency:go-offline -B
-
-# Copy source code and build executable jar
 COPY src ./src
-RUN mvn clean package -DskipTests -B
+RUN mvn clean package -DskipTests -B \
+    --fail-at-end \
+    -Dmaven.wagon.http.retryHandler.count=5 \
+    -Dmaven.wagon.http.retryHandler.requestSentRetryEnabled=true
 
 # Stage 2: Minimal runtime image
 FROM eclipse-temurin:17-jre-jammy
