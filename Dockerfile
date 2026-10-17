@@ -3,14 +3,12 @@
 FROM maven:3.9.6-eclipse-temurin-17 AS builder
 WORKDIR /app
 
-# Copy pom first, then src — single mvn pass avoids double Maven Central
-# round-trips that trigger 429 rate-limits on shared build IPs.
+# Use a custom settings.xml that points to repo1.maven.org to avoid
+# 429 rate-limits on repo.maven.apache.org from Render's shared build IPs.
+COPY settings.xml /root/.m2/settings.xml
 COPY pom.xml .
 COPY src ./src
-RUN mvn clean package -DskipTests -B \
-    --fail-at-end \
-    -Dmaven.wagon.http.retryHandler.count=5 \
-    -Dmaven.wagon.http.retryHandler.requestSentRetryEnabled=true
+RUN mvn clean package -DskipTests -B
 
 # Stage 2: Minimal runtime image
 FROM eclipse-temurin:17-jre-jammy
