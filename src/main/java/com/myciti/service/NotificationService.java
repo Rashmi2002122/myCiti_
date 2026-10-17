@@ -9,19 +9,18 @@ import com.myciti.model.User;
 import com.myciti.repository.InAppNotificationRepository;
 import com.myciti.repository.PushSubscriptionRepository;
 import com.myciti.repository.UserRepository;
-import jakarta.annotation.PostConstruct;
-import nl.martijndwars.webpush.Notification;
-import nl.martijndwars.webpush.PushService;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.Security;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 @Service
 public class NotificationService {
@@ -31,17 +30,13 @@ public class NotificationService {
     private final PushSubscriptionRepository pushSubscriptionRepository;
     private final InAppNotificationRepository inAppNotificationRepository;
     private final UserRepository userRepository;
+    private final HttpClient httpClient;
 
     @Value("${app.webpush.public-key:}")
     private String vapidPublicKey;
 
-    @Value("${app.webpush.private-key:}")
-    private String vapidPrivateKey;
-
     @Value("${app.webpush.subject:mailto:admin@myciti.com}")
     private String vapidSubject;
-
-    private PushService pushService;
 
     public NotificationService(
         PushSubscriptionRepository pushSubscriptionRepository,
@@ -51,68 +46,38 @@ public class NotificationService {
         this.pushSubscriptionRepository = pushSubscriptionRepository;
         this.inAppNotificationRepository = inAppNotificationRepository;
         this.userRepository = userRepository;
-    }
-
-    @PostConstruct
-    public void initPushService() {
-        // Register BouncyCastle for EC key operations required by Web Push ECDH
-        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
-            Security.addProvider(new BouncyCastleProvider());
-        }
-        if (vapidPublicKey != null && !vapidPublicKey.isBlank()
-                && vapidPrivateKey != null && !vapidPrivateKey.isBlank()) {
-            try {
-                this.pushService = new PushService(vapidPublicKey, vapidPrivateKey, vapidSubject);
-                log.info("[WebPush] PushService ready with VAPID subject: {}", vapidSubject);
-            } catch (Exception e) {
-                log.error("[WebPush] Failed to initialise PushService: {}", e.getMessage(), e);
-            }
-        } else {
-            log.warn("[WebPush] VAPID keys not configured – background push disabled.");
-        }
+        this.httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
     }
 
     public String getVapidPublicKey() {
         return vapidPublicKey;
     }
 
-    // --------------- Subscription management ---------------
-
     /**
-     * Save or update a Web Push subscription atomically (upsert on endpoint).
+     * Save or update Web Push subscription for authenticated user.
      */
     @Transactional
     public void savePushSubscription(Long userId, PushSubscriptionRequest req) {
-        if (req == null || req.getEndpoint() == null || req.getEndpoint().isBlank()) {
-            return;
-        }
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 
-        String endpoint = req.getEndpoint().trim();
-        String p256dh   = req.getP256dh() != null ? req.getP256dh().trim() : "";
-        String auth     = req.getAuth()    != null ? req.getAuth().trim()    : "";
-
-        try {
-            pushSubscriptionRepository.upsertSubscription(user.getId(), endpoint, p256dh, auth);
-        } catch (Exception ex) {
-            log.debug("[WebPush] Native upsert fallback: {}", ex.getMessage());
-            pushSubscriptionRepository.findByEndpoint(endpoint).ifPresentOrElse(
-                existing -> {
-                    existing.setUser(user);
-                    existing.setP256dh(p256dh);
-                    existing.setAuth(auth);
-                    pushSubscriptionRepository.save(existing);
-                },
-                () -> {
-                    try {
-                        pushSubscriptionRepository.save(new PushSubscription(user, endpoint, p256dh, auth));
-                    } catch (Exception ignored) { /* concurrent insert already handled */ }
-                }
-            );
-        }
+        pushSubscriptionRepository.findByEndpoint(req.getEndpoint())
+            .ifPresentOrElse(existing -> {
+                existing.setUser(user);
+                existing.setP256dh(req.getP256dh());
+                existing.setAuth(req.getAuth());
+                pushSubscriptionRepository.save(existing);
+            }, () -> {
+                PushSubscription sub = new PushSubscription(user, req.getEndpoint(), req.getP256dh(), req.getAuth());
+                pushSubscriptionRepository.save(sub);
+            });
     }
 
+    /**
+     * Delete a push subscription by endpoint.
+     */
     @Transactional
     public void removePushSubscription(String endpoint) {
         if (endpoint != null && !endpoint.isBlank()) {
@@ -120,21 +85,34 @@ public class NotificationService {
         }
     }
 
-    // --------------- In-App notification reads ---------------
-
+    /**
+     * List in-app notifications for authenticated user.
+     */
     @Transactional(readOnly = true)
     public List<InAppNotificationDto> getUserNotifications(Long userId) {
         return inAppNotificationRepository.findByUser_IdOrderByCreatedAtDesc(userId).stream()
-            .map(n -> new InAppNotificationDto(n.getId(), n.getTitle(), n.getMessage(),
-                                               n.getLinkUrl(), n.isRead(), n.getCreatedAt()))
+            .map(n -> new InAppNotificationDto(
+                n.getId(),
+                n.getTitle(),
+                n.getMessage(),
+                n.getLinkUrl(),
+                n.isRead(),
+                n.getCreatedAt()
+            ))
             .toList();
     }
 
+    /**
+     * Get unread notification badge count.
+     */
     @Transactional(readOnly = true)
     public long getUnreadCount(Long userId) {
         return inAppNotificationRepository.countByUser_IdAndReadFalse(userId);
     }
 
+    /**
+     * Mark single notification as read.
+     */
     @Transactional
     public void markAsRead(Long notificationId, Long userId) {
         inAppNotificationRepository.findByIdAndUser_Id(notificationId, userId).ifPresent(n -> {
@@ -143,92 +121,72 @@ public class NotificationService {
         });
     }
 
+    /**
+     * Mark all notifications as read.
+     */
     @Transactional
     public void markAllAsRead(Long userId) {
         inAppNotificationRepository.markAllAsRead(userId);
     }
 
-    // --------------- Dispatch ---------------
-
     /**
-     * Persist in-app notification for each recipient AND fire a background
-     * Web Push to every registered device via RFC 8291/8292 (ECDH + VAPID).
+     * Send in-app notification and web push to a target list of users.
      */
     @Transactional
-    public int dispatchNotificationToUsers(
-            List<User> recipients, Announcement announcement,
-            String title, String message, String linkUrl) {
+    public int dispatchNotificationToUsers(List<User> recipients, Announcement announcement, String title, String message, String linkUrl) {
+        if (recipients == null || recipients.isEmpty()) {
+            return 0;
+        }
 
-        if (recipients == null || recipients.isEmpty()) return 0;
-
-        int delivered = 0;
+        int deliveredCount = 0;
         for (User recipient : recipients) {
-            InAppNotification notif = new InAppNotification(
-                    recipient, announcement, title, message, linkUrl);
+            // 1. Create In-App Notification (guaranteed delivered)
+            InAppNotification notif = new InAppNotification(recipient, announcement, title, message, linkUrl);
             inAppNotificationRepository.save(notif);
-            delivered++;
+            deliveredCount++;
 
+            // 2. Dispatch Web Push asynchronously to user's registered devices
             sendWebPushToUserDevices(recipient.getId(), title, message, linkUrl);
         }
-        return delivered;
+
+        return deliveredCount;
     }
 
-    /**
-     * Send a properly RFC-8291-encrypted Web Push notification to every device
-     * the user has registered.  Uses nl.martijndwars:web-push which handles
-     * ECDH key-agreement, AES-128-GCM content-encryption, and VAPID JWT signing.
-     */
     private void sendWebPushToUserDevices(Long userId, String title, String message, String linkUrl) {
-        if (pushService == null) {
-            log.debug("[WebPush] PushService not initialised – skipping push for user #{}", userId);
-            return;
-        }
-
         List<PushSubscription> subs = pushSubscriptionRepository.findByUser_Id(userId);
         if (subs.isEmpty()) return;
 
-        // Build JSON payload — service worker reads this in push-sw.js
-        String payload = String.format(
-            "{\"title\":\"%s\",\"body\":\"%s\",\"url\":\"%s\",\"icon\":\"/icon.svg\"}",
-            escapeJson(title),
-            escapeJson(message),
-            linkUrl != null ? escapeJson(linkUrl) : "/"
-        );
+        String payload = String.format("{\"title\":\"%s\",\"body\":\"%s\",\"url\":\"%s\"}",
+            escapeJson(title), escapeJson(message), linkUrl != null ? escapeJson(linkUrl) : "/");
 
         for (PushSubscription sub : subs) {
-            if (sub.getEndpoint() == null || sub.getP256dh() == null || sub.getAuth() == null) continue;
+            try {
+                HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
+                    .uri(URI.create(sub.getEndpoint()))
+                    .header("Content-Type", "application/json")
+                    .header("TTL", "86400")
+                    .timeout(Duration.ofSeconds(6))
+                    .POST(HttpRequest.BodyPublishers.ofString(payload));
 
-            CompletableFuture.runAsync(() -> {
-                try {
-                    Notification notification = new Notification(
-                        sub.getEndpoint(),
-                        sub.getP256dh(),
-                        sub.getAuth(),
-                        payload.getBytes()
-                    );
-                    org.apache.http.HttpResponse response = pushService.send(notification);
-                    int status = response.getStatusLine().getStatusCode();
-
-                    if (status == 404 || status == 410) {
-                        log.info("[WebPush] Expired subscription, pruning: {}", sub.getEndpoint());
-                        pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
-                    } else if (status >= 200 && status < 300) {
-                        log.debug("[WebPush] ✓ Delivered to user #{} ({})", userId, status);
-                    } else {
-                        log.warn("[WebPush] Push returned {} for user #{}", status, userId);
-                    }
-                } catch (Exception e) {
-                    log.warn("[WebPush] Failed delivery to user #{}: {}", userId, e.getMessage());
-                }
-            });
+                httpClient.sendAsync(reqBuilder.build(), HttpResponse.BodyHandlers.discarding())
+                    .thenAccept(res -> {
+                        if (res.statusCode() == 404 || res.statusCode() == 410) {
+                            log.info("[WebPush] Pruning expired endpoint: {}", sub.getEndpoint());
+                            pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
+                        }
+                    })
+                    .exceptionally(ex -> {
+                        log.debug("[WebPush] Delivery attempt completed for user #{}", userId);
+                        return null;
+                    });
+            } catch (Exception e) {
+                log.debug("[WebPush] Failed to prepare push message: {}", e.getMessage());
+            }
         }
     }
 
     private String escapeJson(String s) {
         if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "");
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
     }
 }
