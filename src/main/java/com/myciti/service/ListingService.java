@@ -9,6 +9,9 @@ import com.myciti.model.ListingImage;
 import com.myciti.repository.ListingImageRepository;
 import com.myciti.repository.ListingRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,7 +47,9 @@ public class ListingService {
 
     /**
      * Fetch active listings with optional distance, category and query filters.
+     * Caches non-coordinate queries (e.g. city/category landing views) in memory.
      */
+    @Cacheable(value = "listings", key = "{#category, #city, #lat, #lng, #radiusKm, #q}", condition = "#lat == null && #lng == null")
     @Transactional(readOnly = true)
     public List<ListingResponse> getListings(
         Category category,
@@ -116,6 +121,7 @@ public class ListingService {
     /**
      * Get single listing detail by ID.
      */
+    @Cacheable(value = "listingById", key = "#id")
     @Transactional(readOnly = true)
     public ListingResponse getListingById(Long id) {
         Listing listing = listingRepository.findByIdWithImages(id)
@@ -261,6 +267,10 @@ public class ListingService {
     /**
      * Admin: Create new listing.
      */
+    @Caching(evict = {
+        @CacheEvict(value = "listings", allEntries = true),
+        @CacheEvict(value = "listingById", allEntries = true)
+    })
     @Transactional
     public ListingResponse createListing(com.myciti.dto.ListingRequest req) {
         Listing listing = new Listing();
@@ -273,6 +283,10 @@ public class ListingService {
     /**
      * Admin: Update existing listing.
      */
+    @Caching(evict = {
+        @CacheEvict(value = "listings", allEntries = true),
+        @CacheEvict(value = "listingById", key = "#id")
+    })
     @Transactional
     public ListingResponse updateListing(Long id, com.myciti.dto.ListingRequest req) {
         Listing listing = listingRepository.findById(id)
@@ -288,6 +302,10 @@ public class ListingService {
     /**
      * Admin: Delete listing.
      */
+    @Caching(evict = {
+        @CacheEvict(value = "listings", allEntries = true),
+        @CacheEvict(value = "listingById", key = "#id")
+    })
     @Transactional
     public void deleteListing(Long id) {
         if (!listingRepository.existsById(id)) {
@@ -299,6 +317,10 @@ public class ListingService {
     /**
      * Admin: Add image to listing.
      */
+    @Caching(evict = {
+        @CacheEvict(value = "listings", allEntries = true),
+        @CacheEvict(value = "listingById", key = "#listingId")
+    })
     @Transactional
     public ImageResponse addListingImage(Long listingId, String imageUrl, Integer sortOrder) {
         Listing listing = listingRepository.findById(listingId)

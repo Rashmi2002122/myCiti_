@@ -4,6 +4,8 @@ import com.myciti.dto.*;
 import com.myciti.exception.ResourceNotFoundException;
 import com.myciti.model.*;
 import com.myciti.repository.*;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +42,7 @@ public class AdCampaignService {
      * Create a new ad campaign (CLIENT or ADMIN).
      * Clients can only create campaigns for their own approved listings.
      */
+    @CacheEvict(value = "activeAds", allEntries = true)
     @Transactional
     public AdCampaignResponse createCampaign(Long userId, AdCampaignRequest req) {
         User user = userRepository.findById(userId)
@@ -120,6 +123,7 @@ public class AdCampaignService {
     /**
      * Pause campaign.
      */
+    @CacheEvict(value = "activeAds", allEntries = true)
     @Transactional
     public AdCampaignResponse pauseCampaign(Long userId, Long campaignId) {
         AdCampaign campaign = getCampaignOrThrow(campaignId);
@@ -133,6 +137,7 @@ public class AdCampaignService {
     /**
      * Resume campaign.
      */
+    @CacheEvict(value = "activeAds", allEntries = true)
     @Transactional
     public AdCampaignResponse resumeCampaign(Long userId, Long campaignId) {
         AdCampaign campaign = getCampaignOrThrow(campaignId);
@@ -145,7 +150,9 @@ public class AdCampaignService {
 
     /**
      * Active ads matching user's coarse location or city (Public & Users).
+     * Caches non-coordinate queries (e.g. city landing view) in memory.
      */
+    @Cacheable(value = "activeAds", key = "{#userLat, #userLng, #city}", condition = "#userLat == null && #userLng == null")
     @Transactional(readOnly = true)
     public List<ActiveAdDto> getActiveAds(Double userLat, Double userLng, String city) {
         LocalDate today = LocalDate.now();
@@ -260,6 +267,7 @@ public class AdCampaignService {
             .toList();
     }
 
+    @CacheEvict(value = "activeAds", allEntries = true)
     @Transactional
     public AdCampaignResponse approveCampaignAdmin(Long campaignId) {
         AdCampaign campaign = getCampaignOrThrow(campaignId);
@@ -269,6 +277,7 @@ public class AdCampaignService {
         return AdCampaignResponse.fromEntity(adCampaignRepository.save(campaign));
     }
 
+    @CacheEvict(value = "activeAds", allEntries = true)
     @Transactional
     public AdCampaignResponse rejectCampaignAdmin(Long campaignId, String reason) {
         AdCampaign campaign = getCampaignOrThrow(campaignId);
@@ -278,6 +287,7 @@ public class AdCampaignService {
         return AdCampaignResponse.fromEntity(adCampaignRepository.save(campaign));
     }
 
+    @CacheEvict(value = "activeAds", allEntries = true)
     @Transactional
     public void deleteCampaign(Long userId, Long campaignId) {
         AdCampaign campaign = getCampaignOrThrow(campaignId);
@@ -285,6 +295,7 @@ public class AdCampaignService {
         adCampaignRepository.delete(campaign);
     }
 
+    @CacheEvict(value = "activeAds", allEntries = true)
     @Transactional
     public void deleteCampaignAdmin(Long campaignId) {
         AdCampaign campaign = getCampaignOrThrow(campaignId);
