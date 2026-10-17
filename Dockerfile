@@ -8,7 +8,15 @@ WORKDIR /app
 COPY settings.xml /root/.m2/settings.xml
 COPY pom.xml .
 COPY src ./src
-RUN mvn clean package -DskipTests -B
+# Retry loop: Maven Central rate-limits (429) Render's shared IPs.
+# Wait 15 s between attempts — up to 5 tries.
+RUN for i in $(seq 1 5); do \
+      echo "=== Maven build attempt $i/5 ==="; \
+      mvn clean package -DskipTests -B && break; \
+      EXIT=$?; \
+      if [ $i -lt 5 ]; then echo "Attempt $i failed (exit $EXIT), retrying in 15s..."; sleep 15; fi; \
+    done; \
+    test -f target/myciti-backend-0.0.1-SNAPSHOT.jar || (echo "Build failed after 5 attempts" && exit 1)
 
 # Stage 2: Minimal runtime image
 FROM eclipse-temurin:17-jre-jammy
