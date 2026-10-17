@@ -9,19 +9,28 @@ import com.myciti.model.User;
 import com.myciti.repository.InAppNotificationRepository;
 import com.myciti.repository.PushSubscriptionRepository;
 import com.myciti.repository.UserRepository;
+import io.jsonwebtoken.Jwts;
 import jakarta.annotation.PostConstruct;
-import nl.martijndwars.web_push.Notification;
-import nl.martijndwars.web_push.PushService;
-import org.apache.http.HttpResponse;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.Security;
+import java.math.BigInteger;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.security.AlgorithmParameters;
+import java.security.KeyFactory;
+import java.security.PrivateKey;
+import java.security.spec.ECGenParameterSpec;
+import java.security.spec.ECParameterSpec;
+import java.security.spec.ECPrivateKeySpec;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.Date;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -33,6 +42,7 @@ public class NotificationService {
     private final PushSubscriptionRepository pushSubscriptionRepository;
     private final InAppNotificationRepository inAppNotificationRepository;
     private final UserRepository userRepository;
+    private final HttpClient httpClient;
 
     @Value("${app.webpush.public-key:}")
     private String vapidPublicKey;
@@ -43,7 +53,7 @@ public class NotificationService {
     @Value("${app.webpush.subject:mailto:admin@myciti.com}")
     private String vapidSubject;
 
-    private PushService pushService;
+    private PrivateKey vapidPrivateKeyObj;
 
     public NotificationService(
         PushSubscriptionRepository pushSubscriptionRepository,
@@ -53,19 +63,26 @@ public class NotificationService {
         this.pushSubscriptionRepository = pushSubscriptionRepository;
         this.inAppNotificationRepository = inAppNotificationRepository;
         this.userRepository = userRepository;
+        this.httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
     }
 
     @PostConstruct
-    public void initPushService() {
-        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
-            Security.addProvider(new BouncyCastleProvider());
-        }
-        if (vapidPublicKey != null && !vapidPublicKey.isBlank() && vapidPrivateKey != null && !vapidPrivateKey.isBlank()) {
+    public void initVapidKey() {
+        if (vapidPrivateKey != null && !vapidPrivateKey.isBlank()) {
             try {
-                this.pushService = new PushService(vapidPublicKey, vapidPrivateKey, vapidSubject);
-                log.info("[WebPush] PushService initialized successfully with VAPID subject: {}", vapidSubject);
+                byte[] raw = Base64.getUrlDecoder().decode(vapidPrivateKey);
+                BigInteger s = new BigInteger(1, raw);
+                AlgorithmParameters params = AlgorithmParameters.getInstance("EC");
+                params.init(new ECGenParameterSpec("secp256r1"));
+                ECParameterSpec ecSpec = params.getParameterSpec(ECParameterSpec.class);
+                ECPrivateKeySpec keySpec = new ECPrivateKeySpec(s, ecSpec);
+                KeyFactory kf = KeyFactory.getInstance("EC");
+                this.vapidPrivateKeyObj = kf.generatePrivate(keySpec);
+                log.info("[WebPush] VAPID ES256 key initialized successfully for background push delivery.");
             } catch (Exception e) {
-                log.error("[WebPush] Failed to initialize PushService with VAPID keys", e);
+                log.warn("[WebPush] Could not parse VAPID private key: {}", e.getMessage());
             }
         } else {
             log.warn("[WebPush] VAPID keys not configured; background push delivery will be disabled.");
@@ -177,28 +194,35 @@ public class NotificationService {
         List<PushSubscription> subs = pushSubscriptionRepository.findByUser_Id(userId);
         if (subs.isEmpty()) return;
 
-        String payload = String.format("{\"title\":\"%s\",\"body\":\"%s\",\"url\":\"%s\"}",
-            escapeJson(title), escapeJson(message), linkUrl != null ? escapeJson(linkUrl) : "/");
-
         for (PushSubscription sub : subs) {
             CompletableFuture.runAsync(() -> {
                 try {
-                    if (pushService != null && sub.getP256dh() != null && sub.getAuth() != null) {
-                        Notification notification = new Notification(
-                            sub.getEndpoint(),
-                            sub.getP256dh(),
-                            sub.getAuth(),
-                            payload.getBytes(StandardCharsets.UTF_8)
-                        );
-                        HttpResponse response = pushService.send(notification);
-                        int status = response.getStatusLine().getStatusCode();
-                        if (status == 404 || status == 410) {
-                            log.info("[WebPush] Pruning expired endpoint: {}", sub.getEndpoint());
-                            pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
-                        } else {
-                            log.debug("[WebPush] Successfully pushed notification to user #{}, status: {}", userId, status);
-                        }
+                    String token = generateVapidToken(sub.getEndpoint());
+                    HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
+                        .uri(URI.create(sub.getEndpoint()))
+                        .header("TTL", "86400")
+                        .header("Urgency", "high")
+                        .timeout(Duration.ofSeconds(6));
+
+                    if (token != null && vapidPublicKey != null && !vapidPublicKey.isBlank()) {
+                        reqBuilder.header("Authorization", "vapid t=" + token + ", k=" + vapidPublicKey);
                     }
+
+                    reqBuilder.POST(HttpRequest.BodyPublishers.noBody());
+
+                    httpClient.sendAsync(reqBuilder.build(), HttpResponse.BodyHandlers.discarding())
+                        .thenAccept(res -> {
+                            if (res.statusCode() == 404 || res.statusCode() == 410) {
+                                log.info("[WebPush] Pruning expired endpoint: {}", sub.getEndpoint());
+                                pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
+                            } else {
+                                log.debug("[WebPush] Push sent to user #{}, status: {}", userId, res.statusCode());
+                            }
+                        })
+                        .exceptionally(ex -> {
+                            log.debug("[WebPush] Delivery attempt completed for user #{}", userId);
+                            return null;
+                        });
                 } catch (Exception e) {
                     log.warn("[WebPush] Failed push delivery to user #{}: {}", userId, e.getMessage());
                 }
@@ -206,8 +230,24 @@ public class NotificationService {
         }
     }
 
-    private String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+    private String generateVapidToken(String endpoint) {
+        if (vapidPrivateKeyObj == null || endpoint == null) return null;
+        try {
+            URI uri = URI.create(endpoint);
+            String origin = uri.getScheme() + "://" + uri.getAuthority();
+            Date now = new Date();
+            Date exp = new Date(now.getTime() + 12 * 3600 * 1000); // 12 hours
+
+            return Jwts.builder()
+                .header().add("typ", "JWT").add("alg", "ES256").and()
+                .audience().add(origin).and()
+                .expiration(exp)
+                .subject(vapidSubject)
+                .signWith(vapidPrivateKeyObj, Jwts.SIG.ES256)
+                .compact();
+        } catch (Exception e) {
+            log.warn("[WebPush] Failed to create VAPID token: {}", e.getMessage());
+            return null;
+        }
     }
 }
