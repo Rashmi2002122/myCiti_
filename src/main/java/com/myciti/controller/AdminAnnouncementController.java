@@ -36,20 +36,4 @@ public class AdminAnnouncementController {
         String reason = (body != null && body.containsKey("reason")) ? body.get("reason") : "Does not meet community guidelines";
         return ResponseEntity.ok(announcementService.rejectAnnouncementAdmin(id, reason));
     }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteAnnouncement(@PathVariable Long id) {
-        announcementService.deleteAnnouncementAdmin(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    @PostMapping("/broadcast")
-    public ResponseEntity<AnnouncementResponse> broadcastAnnouncement(
-        @org.springframework.security.core.annotation.AuthenticationPrincipal com.myciti.model.User user,
-        @jakarta.validation.Valid @RequestBody com.myciti.dto.AnnouncementRequest req
-    ) {
-        if (user == null) return ResponseEntity.status(401).build();
-        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
-            .body(announcementService.createAnnouncement(user.getId(), req));
-    }
 }
