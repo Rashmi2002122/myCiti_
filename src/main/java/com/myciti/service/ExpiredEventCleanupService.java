@@ -46,6 +46,10 @@ public class ExpiredEventCleanupService {
      * Also runs on application startup after a 30-second initial delay.
      */
     @Scheduled(cron = "0 0 2 * * ?", zone = "Asia/Kolkata")
+    @org.springframework.cache.annotation.Caching(evict = {
+        @org.springframework.cache.annotation.CacheEvict(value = "listings", allEntries = true),
+        @org.springframework.cache.annotation.CacheEvict(value = "listingById", allEntries = true)
+    })
     @Transactional
     public void cleanupExpiredEventsAndStorage() {
         LocalDate todayInKolkata = ZonedDateTime.now(kolkataZone).toLocalDate();

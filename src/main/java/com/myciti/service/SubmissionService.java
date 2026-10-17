@@ -11,6 +11,8 @@ import com.myciti.repository.ListingRepository;
 import com.myciti.repository.SubmissionRepository;
 import com.myciti.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -342,6 +344,10 @@ public class SubmissionService {
         return SubmissionResponse.fromEntity(submission);
     }
 
+    @Caching(evict = {
+        @CacheEvict(value = "listings", allEntries = true),
+        @CacheEvict(value = "listingById", allEntries = true)
+    })
     @Transactional
     public SubmissionResponse approveSubmission(Long id, User adminUser) {
         Submission submission = submissionRepository.findById(id)
