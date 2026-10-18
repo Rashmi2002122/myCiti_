@@ -31,30 +31,52 @@ public class RateLimitingService {
 
     private final Map<String, BucketEntry> buckets = new ConcurrentHashMap<>();
 
-    private Bucket createNewBucket() {
-        // 20 requests per minute per IP
+    private String normalizeIp(String ip) {
+        return (ip == null || ip.isBlank()) ? "anonymous" : ip.trim();
+    }
+
+    private Bucket createBucket(int capacity, Duration refillPeriod) {
         Bandwidth limit = Bandwidth.builder()
-            .capacity(20)
-            .refillGreedy(20, Duration.ofMinutes(1))
+            .capacity(capacity)
+            .refillGreedy(capacity, refillPeriod)
             .build();
         return Bucket.builder()
             .addLimit(limit)
             .build();
     }
 
-    public boolean tryConsume(String ip) {
-        String key = (ip == null || ip.isBlank()) ? "anonymous" : ip.trim();
-
+    private boolean tryConsumeKey(String key, int capacity, Duration refillPeriod) {
         BucketEntry entry = buckets.get(key);
         if (entry == null) {
             if (buckets.size() >= MAX_ENTRIES) {
                 evictExpired();
             }
-            entry = buckets.computeIfAbsent(key, k -> new BucketEntry(createNewBucket()));
+            entry = buckets.computeIfAbsent(key, k -> new BucketEntry(createBucket(capacity, refillPeriod)));
         }
 
         entry.lastAccessTime = System.currentTimeMillis();
         return entry.bucket.tryConsume(1);
+    }
+
+    /**
+     * Rate limit for auth endpoints: 20 requests per minute.
+     */
+    public boolean tryConsumeAuth(String ip) {
+        return tryConsumeKey("auth:" + normalizeIp(ip), 20, Duration.ofMinutes(1));
+    }
+
+    /**
+     * Rate limit for ad impression and click recording: 60 requests per minute.
+     */
+    public boolean tryConsumeAdAction(String ip) {
+        return tryConsumeKey("ad:" + normalizeIp(ip), 60, Duration.ofMinutes(1));
+    }
+
+    /**
+     * General consume method (defaults to auth rate limit).
+     */
+    public boolean tryConsume(String ip) {
+        return tryConsumeAuth(ip);
     }
 
     /**
