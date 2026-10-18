@@ -43,6 +43,9 @@ public class NotificationService {
     private final InAppNotificationRepository inAppNotificationRepository;
     private final UserRepository userRepository;
 
+    public static final String DEFAULT_VAPID_PUBLIC_KEY = "BI6X8efg0NneUwweP4_8iN03fs8lni8tJxhAuVeSIe47d_KMgAvurPgHCs1hQWVHdRcPEDKeclb3i0lVxQSF5aU";
+    public static final String DEFAULT_VAPID_PRIVATE_KEY = "TXf5XT1edt99DHdMp9vvpUPBwYy2nsXY95_wZFCdJAY";
+
     @Value("${app.webpush.public-key:}")
     private String vapidPublicKey;
 
@@ -70,21 +73,21 @@ public class NotificationService {
             Security.addProvider(new BouncyCastleProvider());
         }
 
-        if (vapidPublicKey != null && !vapidPublicKey.isBlank()
-            && vapidPrivateKey != null && !vapidPrivateKey.isBlank()) {
-            try {
-                this.pushService = new PushService(vapidPublicKey.trim(), vapidPrivateKey.trim(), vapidSubject != null ? vapidSubject.trim() : "mailto:admin@myciti.com");
-                log.info("[WebPush] Initialized RFC 8292 PushService with VAPID credentials.");
-            } catch (Exception e) {
-                log.warn("[WebPush] Failed to initialize PushService: {}. Web Push will be disabled.", e.getMessage());
-            }
-        } else {
-            log.info("[WebPush] VAPID keys not configured. Browser web push disabled; in-app notifications active.");
+        String pub = (vapidPublicKey != null && !vapidPublicKey.isBlank()) ? vapidPublicKey.trim() : DEFAULT_VAPID_PUBLIC_KEY;
+        String priv = (vapidPrivateKey != null && !vapidPrivateKey.isBlank()) ? vapidPrivateKey.trim() : DEFAULT_VAPID_PRIVATE_KEY;
+        String subject = (vapidSubject != null && !vapidSubject.isBlank()) ? vapidSubject.trim() : "mailto:admin@myciti.com";
+
+        try {
+            this.pushService = new PushService(pub, priv, subject);
+            this.vapidPublicKey = pub;
+            log.info("[WebPush] Initialized RFC 8292 PushService with VAPID credentials.");
+        } catch (Exception e) {
+            log.warn("[WebPush] Failed to initialize PushService: {}. Web Push will be disabled.", e.getMessage());
         }
     }
 
     public String getVapidPublicKey() {
-        return vapidPublicKey != null ? vapidPublicKey.trim() : "";
+        return (vapidPublicKey != null && !vapidPublicKey.isBlank()) ? vapidPublicKey.trim() : DEFAULT_VAPID_PUBLIC_KEY;
     }
 
     /**
