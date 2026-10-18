@@ -212,6 +212,10 @@ public class SubmissionService {
         submissionRepository.delete(submission);
     }
 
+    @Caching(evict = {
+        @CacheEvict(value = "listings", allEntries = true),
+        @CacheEvict(value = "listingById", allEntries = true)
+    })
     @Transactional
     public SubmissionResponse unpublishSubmission(Long id, Long userId) {
         Submission submission = submissionRepository.findById(id)
@@ -429,6 +433,10 @@ public class SubmissionService {
         return SubmissionResponse.fromEntity(savedSubmission);
     }
 
+    @Caching(evict = {
+        @CacheEvict(value = "listings", allEntries = true),
+        @CacheEvict(value = "listingById", allEntries = true)
+    })
     @Transactional
     public SubmissionResponse declineSubmission(Long id, String reason, User adminUser) {
         if (reason == null || reason.trim().length() < 10) {
@@ -437,6 +445,14 @@ public class SubmissionService {
 
         Submission submission = submissionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Submission not found with ID: " + id));
+
+        // If this submission had an associated live listing, remove it from the public listings & map
+        if (submission.getListingId() != null) {
+            listingRepository.findById(submission.getListingId()).ifPresent(listing -> {
+                listingRepository.delete(listing);
+            });
+            submission.setListingId(null);
+        }
 
         // Idempotency: If already declined with the same reason
         if (submission.getStatus() == SubmissionStatus.DECLINED && reason.trim().equals(submission.getDeclineReason())) {

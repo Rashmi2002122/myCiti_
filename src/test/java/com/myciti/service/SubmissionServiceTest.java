@@ -406,6 +406,31 @@ public class SubmissionServiceTest {
     }
 
     @Test
+    void declineSubmission_withExistingLiveListing_deletesLiveListingAndSetsDeclined() {
+        Submission sub = new Submission();
+        sub.setId(10L);
+        sub.setStatus(SubmissionStatus.APPROVED);
+        sub.setListingId(55L);
+
+        Listing listing = new Listing();
+        listing.setId(55L);
+
+        when(submissionRepository.findById(10L)).thenReturn(Optional.of(sub));
+        when(listingRepository.findById(55L)).thenReturn(Optional.of(listing));
+        when(submissionRepository.save(any(Submission.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        User adminUser = new User("admin-sub", "admin@myciti.com", "Admin", null);
+        adminUser.setId(99L);
+        adminUser.setRole(Role.ADMIN);
+
+        SubmissionResponse res = submissionService.declineSubmission(10L, "Wrong location coordinates", adminUser);
+
+        assertEquals(SubmissionStatus.DECLINED, res.getStatus());
+        verify(listingRepository).delete(listing);
+        assertNull(sub.getListingId());
+    }
+
+    @Test
     void approveSubmission_createsNewListingAndAudits() {
         Submission sub = new Submission();
         sub.setId(10L);
