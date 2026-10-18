@@ -208,6 +208,22 @@ public class NotificationService {
     }
 
     /**
+     * Delete a single user notification by ID.
+     */
+    @Transactional
+    public void deleteNotification(Long id, Long userId) {
+        inAppNotificationRepository.deleteByIdAndUser_Id(id, userId);
+    }
+
+    /**
+     * Clear all user notifications.
+     */
+    @Transactional
+    public void clearAllNotifications(Long userId) {
+        inAppNotificationRepository.deleteByUser_Id(userId);
+    }
+
+    /**
      * Send in-app notification and web push to a target list of users.
      */
     @Transactional

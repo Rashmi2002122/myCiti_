@@ -24,4 +24,6 @@ public interface InAppNotificationRepository extends JpaRepository<InAppNotifica
     void markAllAsRead(@Param("userId") Long userId);
 
     void deleteByUser_Id(Long userId);
+
+    void deleteByIdAndUser_Id(Long id, Long userId);
 }
