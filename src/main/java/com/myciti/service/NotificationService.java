@@ -9,6 +9,11 @@ import com.myciti.model.User;
 import com.myciti.repository.InAppNotificationRepository;
 import com.myciti.repository.PushSubscriptionRepository;
 import com.myciti.repository.UserRepository;
+import jakarta.annotation.PostConstruct;
+import nl.martijndwars.webpush.Notification;
+import nl.martijndwars.webpush.PushService;
+import org.apache.http.HttpResponse;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,27 +21,38 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import java.security.Security;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class NotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
 
+    private static final List<String> ALLOWED_PUSH_DOMAINS = List.of(
+        "googleapis.com",
+        "google.com",
+        "mozilla.com",
+        "mozilla.org",
+        "push.apple.com",
+        "notify.windows.com"
+    );
+
     private final PushSubscriptionRepository pushSubscriptionRepository;
     private final InAppNotificationRepository inAppNotificationRepository;
     private final UserRepository userRepository;
-    private final HttpClient httpClient;
 
     @Value("${app.webpush.public-key:}")
     private String vapidPublicKey;
 
+    @Value("${app.webpush.private-key:}")
+    private String vapidPrivateKey;
+
     @Value("${app.webpush.subject:mailto:admin@myciti.com}")
     private String vapidSubject;
+
+    private PushService pushService;
 
     public NotificationService(
         PushSubscriptionRepository pushSubscriptionRepository,
@@ -46,13 +62,68 @@ public class NotificationService {
         this.pushSubscriptionRepository = pushSubscriptionRepository;
         this.inAppNotificationRepository = inAppNotificationRepository;
         this.userRepository = userRepository;
-        this.httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .build();
+    }
+
+    @PostConstruct
+    public void init() {
+        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+            Security.addProvider(new BouncyCastleProvider());
+        }
+
+        if (vapidPublicKey != null && !vapidPublicKey.isBlank()
+            && vapidPrivateKey != null && !vapidPrivateKey.isBlank()) {
+            try {
+                this.pushService = new PushService(vapidPublicKey.trim(), vapidPrivateKey.trim(), vapidSubject != null ? vapidSubject.trim() : "mailto:admin@myciti.com");
+                log.info("[WebPush] Initialized RFC 8292 PushService with VAPID credentials.");
+            } catch (Exception e) {
+                log.warn("[WebPush] Failed to initialize PushService: {}. Web Push will be disabled.", e.getMessage());
+            }
+        } else {
+            log.info("[WebPush] VAPID keys not configured. Browser web push disabled; in-app notifications active.");
+        }
     }
 
     public String getVapidPublicKey() {
-        return vapidPublicKey;
+        return vapidPublicKey != null ? vapidPublicKey.trim() : "";
+    }
+
+    /**
+     * SSRF defense: ensure the push endpoint strictly uses HTTPS, has a valid host,
+     * is not a local/private IP or cloud metadata service, and belongs to an authorized push provider.
+     */
+    public static boolean isValidPushEndpoint(String endpoint) {
+        if (endpoint == null || endpoint.isBlank() || endpoint.length() > 2048) {
+            return false;
+        }
+        try {
+            URI uri = URI.create(endpoint.trim());
+            if (!"https".equalsIgnoreCase(uri.getScheme())) {
+                return false;
+            }
+            String host = uri.getHost();
+            if (host == null || host.isBlank()) {
+                return false;
+            }
+            host = host.toLowerCase();
+
+            // Disallow loopback, link-local, private LAN or cloud metadata IPs
+            if (host.equals("localhost") || host.equals("127.0.0.1") || host.equals("::1")
+                || host.startsWith("10.") || host.startsWith("192.168.")
+                || host.startsWith("169.254.") || host.endsWith(".internal")
+                || host.endsWith(".local")) {
+                return false;
+            }
+
+            // Must match trusted push gateway domain suffixes
+            for (String allowed : ALLOWED_PUSH_DOMAINS) {
+                if (host.equals(allowed) || host.endsWith("." + allowed)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**
@@ -60,6 +131,10 @@ public class NotificationService {
      */
     @Transactional
     public void savePushSubscription(Long userId, PushSubscriptionRequest req) {
+        if (!isValidPushEndpoint(req.getEndpoint())) {
+            throw new IllegalArgumentException("Invalid or untrusted push notification endpoint");
+        }
+
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 
@@ -153,6 +228,10 @@ public class NotificationService {
     }
 
     private void sendWebPushToUserDevices(Long userId, String title, String message, String linkUrl) {
+        if (pushService == null) {
+            return;
+        }
+
         List<PushSubscription> subs = pushSubscriptionRepository.findByUser_Id(userId);
         if (subs.isEmpty()) return;
 
@@ -160,28 +239,32 @@ public class NotificationService {
             escapeJson(title), escapeJson(message), linkUrl != null ? escapeJson(linkUrl) : "/");
 
         for (PushSubscription sub : subs) {
-            try {
-                HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(sub.getEndpoint()))
-                    .header("Content-Type", "application/json")
-                    .header("TTL", "86400")
-                    .timeout(Duration.ofSeconds(6))
-                    .POST(HttpRequest.BodyPublishers.ofString(payload));
-
-                httpClient.sendAsync(reqBuilder.build(), HttpResponse.BodyHandlers.discarding())
-                    .thenAccept(res -> {
-                        if (res.statusCode() == 404 || res.statusCode() == 410) {
-                            log.info("[WebPush] Pruning expired endpoint: {}", sub.getEndpoint());
-                            pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
-                        }
-                    })
-                    .exceptionally(ex -> {
-                        log.debug("[WebPush] Delivery attempt completed for user #{}", userId);
-                        return null;
-                    });
-            } catch (Exception e) {
-                log.debug("[WebPush] Failed to prepare push message: {}", e.getMessage());
+            if (!isValidPushEndpoint(sub.getEndpoint())) {
+                log.warn("[WebPush] Skipping untrusted push endpoint for user #{}: {}", userId, sub.getEndpoint());
+                continue;
             }
+
+            CompletableFuture.runAsync(() -> {
+                try {
+                    Notification notification = new Notification(
+                        sub.getEndpoint(),
+                        sub.getP256dh(),
+                        sub.getAuth(),
+                        payload
+                    );
+
+                    HttpResponse response = pushService.send(notification);
+                    int statusCode = response.getStatusLine().getStatusCode();
+                    if (statusCode == 404 || statusCode == 410) {
+                        log.info("[WebPush] Pruning expired endpoint: {}", sub.getEndpoint());
+                        pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
+                    } else if (statusCode >= 400) {
+                        log.debug("[WebPush] Push endpoint returned status {}: {}", statusCode, sub.getEndpoint());
+                    }
+                } catch (Exception ex) {
+                    log.debug("[WebPush] Delivery attempt failed for user #{}: {}", userId, ex.getMessage());
+                }
+            });
         }
     }
 

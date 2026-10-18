@@ -32,6 +32,30 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         this.userRepository = userRepository;
     }
 
+    private static final long CACHE_TTL_MS = 60_000L; // 60 seconds TTL
+
+    private static class CachedUser {
+        final User user;
+        final long cachedAt;
+
+        CachedUser(User user) {
+            this.user = user;
+            this.cachedAt = System.currentTimeMillis();
+        }
+
+        boolean isExpired() {
+            return (System.currentTimeMillis() - cachedAt) > CACHE_TTL_MS;
+        }
+    }
+
+    private final java.util.Map<Long, CachedUser> userCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public void evictUser(Long userId) {
+        if (userId != null) {
+            userCache.remove(userId);
+        }
+    }
+
     @Override
     protected void doFilterInternal(
         HttpServletRequest request,
@@ -43,12 +67,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(token) && jwtProvider.validateToken(token)) {
             try {
                 Long userId = jwtProvider.getUserId(token);
-                String roleClaim = jwtProvider.getRole(token);
 
                 if (userId != null) {
-                    Optional<User> userOpt = userRepository.findById(userId);
-                    if (userOpt.isPresent()) {
-                        User user = userOpt.get();
+                    User user = null;
+                    CachedUser cached = userCache.get(userId);
+                    if (cached != null && !cached.isExpired()) {
+                        user = cached.user;
+                    } else {
+                        Optional<User> userOpt = userRepository.findById(userId);
+                        if (userOpt.isPresent()) {
+                            user = userOpt.get();
+                            if (userCache.size() > 5000) {
+                                userCache.entrySet().removeIf(e -> e.getValue().isExpired());
+                            }
+                            userCache.put(userId, new CachedUser(user));
+                        }
+                    }
+
+                    if (user != null) {
                         if (user.getStatus() == UserStatus.ACTIVE) {
                             String role = "ROLE_" + user.getRole().name();
                             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
@@ -58,6 +94,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             );
                             SecurityContextHolder.getContext().setAuthentication(authentication);
                         } else {
+                            userCache.remove(userId);
                             log.warn("[JwtAuthenticationFilter] Inactive or suspended user #{} attempted request to {}", userId, request.getRequestURI());
                         }
                     }

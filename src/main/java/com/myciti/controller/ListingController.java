@@ -61,12 +61,19 @@ public class ListingController {
                 ? listing.getOfferText() + " | " + listing.getLandmark() + ", " + listing.getAddress()
                 : listing.getDescription()
         );
-        String imageUrl = listing.getPrimaryImageUrl() != null
-            ? listing.getPrimaryImageUrl()
-            : "https://images.unsplash.com/photo-1601614212959-53696884617d?auto=format&fit=crop&w=1200&q=80";
+        String rawImageUrl = listing.getPrimaryImageUrl();
+        String imageUrl;
+        if (rawImageUrl != null && (rawImageUrl.startsWith("https://") || rawImageUrl.startsWith("http://"))) {
+            imageUrl = escapeHtml(rawImageUrl);
+        } else {
+            imageUrl = "https://images.unsplash.com/photo-1601614212959-53696884617d?auto=format&fit=crop&w=1200&q=80";
+        }
 
-        String timing = listing.getDailyOpenTime() + " - " + listing.getDailyCloseTime();
-        String statusText = listing.isOpenNow() ? "🟢 Open Now" : "🔴 Closed";
+        String timing = escapeHtml(listing.getDailyOpenTime() + " - " + listing.getDailyCloseTime());
+        String statusText = escapeHtml(listing.isOpenNow() ? "🟢 Open Now" : "🔴 Closed");
+        String category = escapeHtml(listing.getCategory() != null ? listing.getCategory().name() : "");
+        String landmark = escapeHtml(listing.getLandmark() != null ? listing.getLandmark() : "");
+        String address = escapeHtml(listing.getAddress() != null ? listing.getAddress() : "");
 
         String html = """
             <!DOCTYPE html>
@@ -110,15 +117,15 @@ public class ListingController {
             </html>
             """.formatted(
                 title,
-                title, listing.getCategory(),
+                title, category,
                 statusText, timing, description,
                 imageUrl,
                 title, description, imageUrl,
                 imageUrl, title,
-                listing.getCategory(),
+                category,
                 title,
                 statusText, timing,
-                listing.getLandmark(), listing.getAddress(),
+                landmark, address,
                 description,
                 listing.getId()
             );

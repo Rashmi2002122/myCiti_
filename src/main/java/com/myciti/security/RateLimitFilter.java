@@ -34,13 +34,27 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         if (path.startsWith("/api/auth/")) {
             String clientIp = getClientIp(request);
-            if (!rateLimitingService.tryConsume(clientIp)) {
+            if (!rateLimitingService.tryConsumeAuth(clientIp)) {
                 response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                 ErrorResponse error = new ErrorResponse(
                     HttpStatus.TOO_MANY_REQUESTS.value(),
                     "Too Many Requests",
                     "Rate limit exceeded for authentication requests (max 20 per minute)",
+                    path
+                );
+                response.getWriter().write(objectMapper.writeValueAsString(error));
+                return;
+            }
+        } else if (path.startsWith("/api/ads/campaigns/") && (path.endsWith("/impressions") || path.endsWith("/click"))) {
+            String clientIp = getClientIp(request);
+            if (!rateLimitingService.tryConsumeAdAction(clientIp)) {
+                response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                ErrorResponse error = new ErrorResponse(
+                    HttpStatus.TOO_MANY_REQUESTS.value(),
+                    "Too Many Requests",
+                    "Rate limit exceeded for ad interaction tracking (max 60 per minute)",
                     path
                 );
                 response.getWriter().write(objectMapper.writeValueAsString(error));
