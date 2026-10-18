@@ -135,6 +135,16 @@ public class AnnouncementService {
     }
 
     /**
+     * Admin permanently deletes an announcement.
+     */
+    @Transactional
+    public void deleteAnnouncementAdmin(Long announcementId) {
+        Announcement a = announcementRepository.findById(announcementId)
+            .orElseThrow(() -> new ResourceNotFoundException("Announcement not found: " + announcementId));
+        announcementRepository.delete(a);
+    }
+
+    /**
      * Get user's own announcements.
      */
     @Transactional(readOnly = true)
