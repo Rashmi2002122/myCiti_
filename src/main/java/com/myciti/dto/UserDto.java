@@ -15,11 +15,21 @@ public class UserDto {
     private Role role;
     private UserStatus status;
     private boolean profileComplete;
+    private Double coarseLat;
+    private Double coarseLng;
+    private String areaName;
+    private java.time.Instant locationUpdatedAt;
 
     public UserDto() {}
 
     public UserDto(Long id, String email, String name, String pictureUrl, AccountType accountType,
                    String businessName, String phone, Role role, UserStatus status, boolean profileComplete) {
+        this(id, email, name, pictureUrl, accountType, businessName, phone, role, status, profileComplete, null, null, null, null);
+    }
+
+    public UserDto(Long id, String email, String name, String pictureUrl, AccountType accountType,
+                   String businessName, String phone, Role role, UserStatus status, boolean profileComplete,
+                   Double coarseLat, Double coarseLng, String areaName, java.time.Instant locationUpdatedAt) {
         this.id = id;
         this.email = email;
         this.name = name;
@@ -30,6 +40,10 @@ public class UserDto {
         this.role = role;
         this.status = status;
         this.profileComplete = profileComplete;
+        this.coarseLat = coarseLat;
+        this.coarseLng = coarseLng;
+        this.areaName = areaName;
+        this.locationUpdatedAt = locationUpdatedAt;
     }
 
     public Long getId() { return id; }
@@ -61,4 +75,16 @@ public class UserDto {
 
     public boolean isProfileComplete() { return profileComplete; }
     public void setProfileComplete(boolean profileComplete) { this.profileComplete = profileComplete; }
+
+    public Double getCoarseLat() { return coarseLat; }
+    public void setCoarseLat(Double coarseLat) { this.coarseLat = coarseLat; }
+
+    public Double getCoarseLng() { return coarseLng; }
+    public void setCoarseLng(Double coarseLng) { this.coarseLng = coarseLng; }
+
+    public String getAreaName() { return areaName; }
+    public void setAreaName(String areaName) { this.areaName = areaName; }
+
+    public java.time.Instant getLocationUpdatedAt() { return locationUpdatedAt; }
+    public void setLocationUpdatedAt(java.time.Instant locationUpdatedAt) { this.locationUpdatedAt = locationUpdatedAt; }
 }

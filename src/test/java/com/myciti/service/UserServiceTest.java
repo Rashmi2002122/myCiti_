@@ -145,4 +145,31 @@ public class UserServiceTest {
         assertEquals(UserStatus.ACTIVE, unsuspended.getStatus());
         verify(auditLogRepository).save(any(AuditLog.class));
     }
+
+    @Test
+    void updateLocation_success() {
+        User user = new User("sub-loc", "loc@test.com", "Location User", null);
+        user.setId(5L);
+        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        com.myciti.dto.UpdateLocationRequest req = new com.myciti.dto.UpdateLocationRequest(22.5726, 88.3639, "Kolkata");
+        UserDto result = userService.updateLocation(5L, req);
+
+        assertEquals(22.5726, result.getCoarseLat());
+        assertEquals(88.3639, result.getCoarseLng());
+        assertEquals("Kolkata", result.getAreaName());
+        assertNotNull(result.getLocationUpdatedAt());
+    }
+
+    @Test
+    void updateLocation_suspendedUser_throwsAccessDenied() {
+        User user = new User("sub-suspended", "bad@test.com", "Bad User", null);
+        user.setId(6L);
+        user.setStatus(UserStatus.SUSPENDED);
+        when(userRepository.findById(6L)).thenReturn(Optional.of(user));
+
+        com.myciti.dto.UpdateLocationRequest req = new com.myciti.dto.UpdateLocationRequest(22.5726, 88.3639, "Kolkata");
+        assertThrows(AccessDeniedException.class, () -> userService.updateLocation(6L, req));
+    }
 }
