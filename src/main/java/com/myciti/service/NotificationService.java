@@ -10,6 +10,7 @@ import com.myciti.repository.InAppNotificationRepository;
 import com.myciti.repository.PushSubscriptionRepository;
 import com.myciti.repository.UserRepository;
 import jakarta.annotation.PostConstruct;
+import nl.martijndwars.webpush.Encoding;
 import nl.martijndwars.webpush.Notification;
 import nl.martijndwars.webpush.PushService;
 import org.apache.http.HttpResponse;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.security.Security;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -272,16 +274,27 @@ public class NotificationService {
                         payload
                     );
 
-                    HttpResponse response = pushService.send(notification);
+                    // Send using RFC 8291 standard AES128GCM encryption required by modern Google FCM and Mozilla WebPush
+                    HttpResponse response = pushService.send(notification, Encoding.AES128GCM);
                     int statusCode = response.getStatusLine().getStatusCode();
-                    if (statusCode == 404 || statusCode == 410) {
-                        log.info("[WebPush] Pruning expired endpoint: {}", sub.getEndpoint());
+                    String responseBody = "";
+                    if (response.getEntity() != null) {
+                        try {
+                            responseBody = new String(response.getEntity().getContent().readAllBytes(), StandardCharsets.UTF_8);
+                        } catch (Exception ignored) {}
+                    }
+
+                    if (statusCode == 200 || statusCode == 201) {
+                        log.info("[WebPush] Successfully delivered push to user #{}, HTTP {}", userId, statusCode);
+                    } else if (statusCode == 404 || statusCode == 410) {
+                        log.warn("[WebPush] Push endpoint expired (HTTP {}), removing endpoint for user #{}: {}", statusCode, userId, sub.getEndpoint());
                         pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
-                    } else if (statusCode >= 400) {
-                        log.debug("[WebPush] Push endpoint returned status {}: {}", statusCode, sub.getEndpoint());
+                    } else {
+                        log.warn("[WebPush] Push service rejected delivery for user #{} with HTTP {}: {} | Endpoint: {}",
+                            userId, statusCode, responseBody, sub.getEndpoint());
                     }
                 } catch (Exception ex) {
-                    log.debug("[WebPush] Delivery attempt failed for user #{}: {}", userId, ex.getMessage());
+                    log.error("[WebPush] Delivery exception for user #{}: {}", userId, ex.getMessage(), ex);
                 }
             });
         }
