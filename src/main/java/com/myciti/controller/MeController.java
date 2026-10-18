@@ -47,4 +47,20 @@ public class MeController {
         UserDto updated = userService.updateProfile(currentUser.getId(), request);
         return ResponseEntity.ok(updated);
     }
+
+    /**
+     * PUT /api/me/location
+     * Updates user's coarse location and city for geo-targeted notifications.
+     */
+    @PutMapping("/location")
+    public ResponseEntity<UserDto> updateLocation(
+        @AuthenticationPrincipal User currentUser,
+        @Valid @RequestBody com.myciti.dto.UpdateLocationRequest request
+    ) {
+        if (currentUser == null) {
+            return ResponseEntity.status(401).build();
+        }
+        UserDto updated = userService.updateLocation(currentUser.getId(), request);
+        return ResponseEntity.ok(updated);
+    }
 }

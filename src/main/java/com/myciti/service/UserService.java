@@ -1,6 +1,7 @@
 package com.myciti.service;
 
 import com.myciti.dto.AuditLogDto;
+import com.myciti.dto.UpdateLocationRequest;
 import com.myciti.dto.UpdateProfileRequest;
 import com.myciti.dto.UserDto;
 import com.myciti.exception.ResourceNotFoundException;
@@ -104,6 +105,32 @@ public class UserService {
     }
 
     /**
+     * Update user coarse location and city for geo-targeted notifications.
+     */
+    @Transactional
+    public UserDto updateLocation(Long userId, UpdateLocationRequest request) {
+        User user = findUserById(userId);
+
+        if (user.getStatus() == UserStatus.SUSPENDED) {
+            throw new AccessDeniedException("Your account is suspended. Contact admin@myciti.com");
+        }
+
+        if (request.getLatitude() != null) {
+            user.setCoarseLat(request.getLatitude());
+        }
+        if (request.getLongitude() != null) {
+            user.setCoarseLng(request.getLongitude());
+        }
+        if (request.getCity() != null && !request.getCity().isBlank()) {
+            user.setAreaName(sanitize(request.getCity()));
+        }
+        user.setLocationUpdatedAt(Instant.now());
+
+        User saved = userRepository.save(user);
+        return mapToDto(saved);
+    }
+
+    /**
      * Admin: Search/List users with pagination.
      */
     @Transactional(readOnly = true)
@@ -197,7 +224,11 @@ public class UserService {
             user.getPhone(),
             user.getRole(),
             user.getStatus(),
-            user.isProfileComplete()
+            user.isProfileComplete(),
+            user.getCoarseLat(),
+            user.getCoarseLng(),
+            user.getAreaName(),
+            user.getLocationUpdatedAt()
         );
     }
 }
