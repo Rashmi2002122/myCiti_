@@ -27,7 +27,7 @@ public class NotificationController {
         return ResponseEntity.ok(Map.of("publicKey", notificationService.getVapidPublicKey() != null ? notificationService.getVapidPublicKey() : ""));
     }
 
-    @PostMapping("/subscribe")
+    @PostMapping({"/subscribe", "/push-subscribe"})
     public ResponseEntity<Map<String, String>> subscribe(
         @AuthenticationPrincipal User user,
         @Valid @RequestBody PushSubscriptionRequest req
