@@ -214,21 +214,6 @@ public class UserService {
     }
 
     private UserDto mapToDto(User user) {
-        return new UserDto(
-            user.getId(),
-            user.getEmail(),
-            user.getName(),
-            user.getPictureUrl(),
-            user.getAccountType(),
-            user.getBusinessName(),
-            user.getPhone(),
-            user.getRole(),
-            user.getStatus(),
-            user.isProfileComplete(),
-            user.getCoarseLat(),
-            user.getCoarseLng(),
-            user.getAreaName(),
-            user.getLocationUpdatedAt()
-        );
+        return UserDto.from(user);
     }
 }

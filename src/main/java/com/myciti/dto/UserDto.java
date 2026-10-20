@@ -46,6 +46,26 @@ public class UserDto {
         this.locationUpdatedAt = locationUpdatedAt;
     }
 
+    public static UserDto from(com.myciti.model.User user) {
+        if (user == null) return null;
+        return new UserDto(
+            user.getId(),
+            user.getEmail(),
+            user.getName(),
+            user.getPictureUrl(),
+            user.getAccountType(),
+            user.getBusinessName(),
+            user.getPhone(),
+            user.getRole(),
+            user.getStatus(),
+            user.isProfileComplete(),
+            user.getCoarseLat(),
+            user.getCoarseLng(),
+            user.getAreaName(),
+            user.getLocationUpdatedAt()
+        );
+    }
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 

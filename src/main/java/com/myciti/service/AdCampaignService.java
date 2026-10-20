@@ -4,6 +4,8 @@ import com.myciti.dto.*;
 import com.myciti.exception.ResourceNotFoundException;
 import com.myciti.model.*;
 import com.myciti.repository.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.access.AccessDeniedException;
@@ -12,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,6 +26,24 @@ public class AdCampaignService {
     private final ListingRepository listingRepository;
     private final SubmissionRepository submissionRepository;
     private final UserRepository userRepository;
+    private final ZoneId zoneId;
+
+    @Autowired
+    public AdCampaignService(
+        AdCampaignRepository adCampaignRepository,
+        AdReportRepository adReportRepository,
+        ListingRepository listingRepository,
+        SubmissionRepository submissionRepository,
+        UserRepository userRepository,
+        @Value("${app.timezone:Asia/Kolkata}") String timeZone
+    ) {
+        this.adCampaignRepository = adCampaignRepository;
+        this.adReportRepository = adReportRepository;
+        this.listingRepository = listingRepository;
+        this.submissionRepository = submissionRepository;
+        this.userRepository = userRepository;
+        this.zoneId = ZoneId.of(timeZone != null && !timeZone.isBlank() ? timeZone.trim() : "Asia/Kolkata");
+    }
 
     public AdCampaignService(
         AdCampaignRepository adCampaignRepository,
@@ -31,11 +52,7 @@ public class AdCampaignService {
         SubmissionRepository submissionRepository,
         UserRepository userRepository
     ) {
-        this.adCampaignRepository = adCampaignRepository;
-        this.adReportRepository = adReportRepository;
-        this.listingRepository = listingRepository;
-        this.submissionRepository = submissionRepository;
-        this.userRepository = userRepository;
+        this(adCampaignRepository, adReportRepository, listingRepository, submissionRepository, userRepository, "Asia/Kolkata");
     }
 
     /**
@@ -155,7 +172,7 @@ public class AdCampaignService {
     @Cacheable(value = "activeAds", key = "{#userLat, #userLng, #city}", condition = "#userLat == null && #userLng == null")
     @Transactional(readOnly = true)
     public List<ActiveAdDto> getActiveAds(Double userLat, Double userLng, String city) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(zoneId);
         List<AdCampaign> active = adCampaignRepository.findActiveApprovedCampaigns(today);
         List<ActiveAdDto> results = new ArrayList<>();
 
