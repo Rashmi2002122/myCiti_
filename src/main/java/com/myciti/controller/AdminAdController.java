@@ -5,6 +5,7 @@ import com.myciti.dto.AdReportDto;
 import com.myciti.model.CampaignStatus;
 import com.myciti.service.AdCampaignService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin/ads")
+@PreAuthorize("hasRole('ADMIN')")
 public class AdminAdController {
 
     private final AdCampaignService adCampaignService;

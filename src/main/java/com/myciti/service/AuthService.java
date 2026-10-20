@@ -231,18 +231,7 @@ public class AuthService {
     }
 
     UserDto mapToDto(User user) {
-        return new UserDto(
-            user.getId(),
-            user.getEmail(),
-            user.getName(),
-            user.getPictureUrl(),
-            user.getAccountType(),
-            user.getBusinessName(),
-            user.getPhone(),
-            user.getRole(),
-            user.getStatus(),
-            user.isProfileComplete()
-        );
+        return UserDto.from(user);
     }
 
     public record AuthResult(String accessToken, String rawRefreshToken, UserDto user) {}

@@ -8,6 +8,8 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
+import java.util.Arrays;
+
 @Service
 public class EmailNotificationService {
 
@@ -41,11 +43,14 @@ public class EmailNotificationService {
         }
 
         try {
-            String[] recipients = adminEmails.split(",");
+            String[] recipients = Arrays.stream(adminEmails.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .toArray(String[]::new);
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
             message.setTo(recipients);
-            message.setSubject("🔔 New Advertisement Submitted for Approval: " + submissionTitle);
+            message.setSubject("🔔 New Advertisement Submitted for Approval: " + sanitizeHeader(submissionTitle));
             message.setText(String.format(
                     "Hello Admin,\n\n" +
                     "A new advertisement has been submitted on myCiti and is waiting for your review.\n\n" +
@@ -127,5 +132,9 @@ public class EmailNotificationService {
         } catch (Exception e) {
             log.error("Failed to send decline email to user {}: {}", toEmail, e.getMessage(), e);
         }
+    }
+
+    private String sanitizeHeader(String header) {
+        return (header == null) ? "" : header.replaceAll("[\\r\\n]", " ").trim();
     }
 }

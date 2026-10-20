@@ -21,8 +21,9 @@ public interface AdCampaignRepository extends JpaRepository<AdCampaign, Long> {
     List<AdCampaign> findByStatusOrderByCreatedAtDesc(CampaignStatus status);
 
     @Query("""
-        SELECT c FROM AdCampaign c
+        SELECT DISTINCT c FROM AdCampaign c
         JOIN FETCH c.listing l
+        LEFT JOIN FETCH l.images
         WHERE c.status = com.myciti.model.CampaignStatus.APPROVED
           AND :today BETWEEN c.startDate AND c.endDate
         ORDER BY c.createdAt DESC
