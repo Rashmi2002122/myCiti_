@@ -58,6 +58,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // Client & Admin campaign and announcement endpoints
                 .requestMatchers("/api/submissions/**").hasAnyRole("CLIENT", "ADMIN")
+                .requestMatchers("/api/me/client-profile/**").hasAnyRole("CLIENT", "ADMIN")
                 .requestMatchers("/api/ads/campaigns", "/api/ads/my-campaigns", "/api/ads/audience-estimate", "/api/ads/campaigns/*/pause", "/api/ads/campaigns/*/resume").hasAnyRole("CLIENT", "ADMIN")
                 .requestMatchers("/api/announcements/**").hasAnyRole("CLIENT", "ADMIN")
                 // User signed-in endpoints

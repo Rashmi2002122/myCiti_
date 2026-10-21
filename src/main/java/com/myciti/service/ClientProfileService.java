@@ -1,44 +1,83 @@
 package com.myciti.service;
 
+import com.myciti.dto.ClientProfileResponse;
 import com.myciti.dto.ImageResponse;
 import com.myciti.dto.ListingResponse;
 import com.myciti.dto.PublicClientProfileResponse;
+import com.myciti.dto.UpdateClientProfileRequest;
 import com.myciti.exception.ResourceNotFoundException;
 import com.myciti.model.*;
 import com.myciti.repository.ClientProfileRepository;
 import com.myciti.repository.ListingRepository;
+import com.myciti.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
 public class ClientProfileService {
 
+    private static final Pattern INDIAN_PHONE_PATTERN = Pattern.compile("^[6-9]\\d{9}$");
+
     private final ClientProfileRepository clientProfileRepository;
     private final ListingRepository listingRepository;
+    private final UserRepository userRepository;
     private final SlugService slugService;
+    private final StorageService storageService;
     private final ZoneId zoneId;
+    private final double minLat;
+    private final double maxLat;
+    private final double minLng;
+    private final double maxLng;
 
     public ClientProfileService(
         ClientProfileRepository clientProfileRepository,
         ListingRepository listingRepository,
+        UserRepository userRepository,
         SlugService slugService,
-        @Value("${app.timezone:Asia/Kolkata}") String timezone
+        StorageService storageService,
+        @Value("${app.timezone:Asia/Kolkata}") String timezone,
+        @Value("${app.city.bbox.min-lat:6.00}") double minLat,
+        @Value("${app.city.bbox.max-lat:37.50}") double maxLat,
+        @Value("${app.city.bbox.min-lng:68.00}") double minLng,
+        @Value("${app.city.bbox.max-lng:97.50}") double maxLng
     ) {
         this.clientProfileRepository = clientProfileRepository;
         this.listingRepository = listingRepository;
+        this.userRepository = userRepository;
         this.slugService = slugService;
+        this.storageService = storageService;
         this.zoneId = ZoneId.of(timezone);
+        this.minLat = minLat;
+        this.maxLat = maxLat;
+        this.minLng = minLng;
+        this.maxLng = maxLng;
+    }
+
+    /**
+     * Backward-compatible constructor for testing.
+     */
+    public ClientProfileService(
+        ClientProfileRepository clientProfileRepository,
+        ListingRepository listingRepository,
+        SlugService slugService,
+        String timezone
+    ) {
+        this(clientProfileRepository, listingRepository, null, slugService, null, timezone, 6.00, 37.50, 68.00, 97.50);
     }
 
     /**
@@ -123,7 +162,6 @@ public class ClientProfileService {
      */
     @Transactional(readOnly = true)
     public Page<ListingResponse> getClientListings(String slug, String tab, Pageable pageable) {
-        // Validate profile exists and is publicly accessible
         PublicClientProfileResponse profile = getPublicProfile(slug);
 
         LocalDate today = ZonedDateTime.now(zoneId).toLocalDate();
@@ -133,11 +171,224 @@ public class ClientProfileService {
         if ("upcoming".equalsIgnoreCase(tab)) {
             page = listingRepository.findUpcomingClientListings(profile.getId(), today, pageable);
         } else {
-            // Default: active
             page = listingRepository.findActiveClientListings(profile.getId(), today, pageable);
         }
 
         return page.map(l -> mapListingToResponse(l, profile, nowTime));
+    }
+
+    /**
+     * Client endpoint: GET /api/me/client-profile.
+     * Fetches current client's own profile.
+     */
+    @Transactional
+    public ClientProfileResponse getMyClientProfile(Long userId) {
+        User user = getUserOrThrow(userId);
+        validateClientOrAdmin(user);
+
+        ClientProfile profile = clientProfileRepository.findByUserId(userId)
+            .orElseGet(() -> createProfileForClient(user, user.getBusinessName(), user.getClientType(), user.getPhone()));
+
+        LocalDate today = ZonedDateTime.now(zoneId).toLocalDate();
+        long activeCount = listingRepository.countByClientProfileIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+            profile.getId(), Status.PUBLISHED, today, today
+        );
+        long upcomingCount = listingRepository.countByClientProfileIdAndStatusAndStartDateAfter(
+            profile.getId(), Status.PUBLISHED, today
+        );
+
+        return ClientProfileResponse.fromEntity(profile, zoneId, activeCount, upcomingCount);
+    }
+
+    /**
+     * Client endpoint: PUT /api/me/client-profile.
+     * Updates client profile details with validation, HTML stripping, and Indian phone sanitization.
+     */
+    @Transactional
+    public ClientProfileResponse updateMyClientProfile(Long userId, UpdateClientProfileRequest req) {
+        User user = getUserOrThrow(userId);
+        validateClientOrAdmin(user);
+
+        ClientProfile profile = clientProfileRepository.findByUserId(userId)
+            .orElseGet(() -> createProfileForClient(user, user.getBusinessName(), user.getClientType(), user.getPhone()));
+
+        // Business Name: validated, HTML stripped, slug remains immutable
+        if (req.getBusinessName() != null) {
+            String cleanName = sanitize(req.getBusinessName(), 120);
+            if (cleanName.isBlank()) {
+                throw new IllegalArgumentException("Business name cannot be blank");
+            }
+            profile.setBusinessName(cleanName);
+            user.setBusinessName(cleanName);
+        }
+
+        // Client Type: validated
+        if (req.getClientType() != null) {
+            profile.setClientType(req.getClientType());
+            user.setClientType(req.getClientType());
+        }
+
+        // Bio: max 160, HTML stripped
+        if (req.getBio() != null) {
+            String cleanBio = sanitize(req.getBio(), 160);
+            profile.setBio(cleanBio);
+        }
+
+        // Address: max 500, HTML stripped
+        if (req.getAddress() != null) {
+            profile.setAddress(sanitize(req.getAddress(), 500));
+        }
+
+        // Landmark: max 255, HTML stripped
+        if (req.getLandmark() != null) {
+            profile.setLandmark(sanitize(req.getLandmark(), 255));
+        }
+
+        // Location coordinates bounding box validation
+        if (req.getLatitude() != null || req.getLongitude() != null) {
+            if (req.getLatitude() == null || req.getLongitude() == null) {
+                throw new IllegalArgumentException("Both latitude and longitude must be provided together");
+            }
+            double lat = req.getLatitude();
+            double lng = req.getLongitude();
+            if (lat < minLat || lat > maxLat || lng < minLng || lng > maxLng) {
+                throw new IllegalArgumentException(String.format(
+                    "Location coordinates (%.4f, %.4f) are outside the supported boundary [%.2f-%.2f Lat, %.2f-%.2f Lng]",
+                    lat, lng, minLat, maxLat, minLng, maxLng
+                ));
+            }
+            profile.setLatitude(lat);
+            profile.setLongitude(lng);
+        }
+
+        // Phone numbers: Indian format validation & independent from login profile
+        if (req.getPublicPhone() != null) {
+            profile.setPublicPhone(validateAndCleanPhone(req.getPublicPhone(), "Public phone"));
+        }
+
+        if (req.getShowPhone() != null) {
+            profile.setShowPhone(req.getShowPhone());
+        }
+
+        if (req.getWhatsappNumber() != null) {
+            profile.setWhatsappNumber(validateAndCleanPhone(req.getWhatsappNumber(), "WhatsApp number"));
+        }
+
+        // Operating hours
+        if (req.getDailyOpenTime() != null) {
+            profile.setDailyOpenTime(req.getDailyOpenTime());
+        }
+
+        if (req.getDailyCloseTime() != null) {
+            profile.setDailyCloseTime(req.getDailyCloseTime());
+        }
+
+        profile.setUpdatedAt(Instant.now());
+        ClientProfile saved = clientProfileRepository.save(profile);
+
+        LocalDate today = ZonedDateTime.now(zoneId).toLocalDate();
+        long activeCount = listingRepository.countByClientProfileIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+            saved.getId(), Status.PUBLISHED, today, today
+        );
+        long upcomingCount = listingRepository.countByClientProfileIdAndStatusAndStartDateAfter(
+            saved.getId(), Status.PUBLISHED, today
+        );
+
+        return ClientProfileResponse.fromEntity(saved, zoneId, activeCount, upcomingCount);
+    }
+
+    /**
+     * Client endpoint: POST /api/me/client-profile/logo.
+     * Uploads business logo (max 5 MB, resized to 400px, EXIF stripped).
+     */
+    @Transactional
+    public String updateLogo(Long userId, MultipartFile file) throws IOException {
+        User user = getUserOrThrow(userId);
+        validateClientOrAdmin(user);
+
+        if (storageService == null) {
+            throw new IllegalStateException("Storage service is not configured");
+        }
+
+        ClientProfile profile = clientProfileRepository.findByUserId(userId)
+            .orElseGet(() -> createProfileForClient(user, user.getBusinessName(), user.getClientType(), user.getPhone()));
+
+        String oldLogo = profile.getLogoUrl();
+        String newUrl = storageService.storeClientLogo(file);
+
+        profile.setLogoUrl(newUrl);
+        profile.setUpdatedAt(Instant.now());
+        clientProfileRepository.save(profile);
+
+        if (oldLogo != null && !oldLogo.isBlank() && !oldLogo.equals(newUrl)) {
+            storageService.deleteImage(oldLogo);
+        }
+
+        return newUrl;
+    }
+
+    /**
+     * Client endpoint: POST /api/me/client-profile/cover.
+     * Uploads business cover banner (max 5 MB, resized to 1200px wide, EXIF stripped).
+     */
+    @Transactional
+    public String updateCover(Long userId, MultipartFile file) throws IOException {
+        User user = getUserOrThrow(userId);
+        validateClientOrAdmin(user);
+
+        if (storageService == null) {
+            throw new IllegalStateException("Storage service is not configured");
+        }
+
+        ClientProfile profile = clientProfileRepository.findByUserId(userId)
+            .orElseGet(() -> createProfileForClient(user, user.getBusinessName(), user.getClientType(), user.getPhone()));
+
+        String oldCover = profile.getCoverUrl();
+        String newUrl = storageService.storeClientCover(file);
+
+        profile.setCoverUrl(newUrl);
+        profile.setUpdatedAt(Instant.now());
+        clientProfileRepository.save(profile);
+
+        if (oldCover != null && !oldCover.isBlank() && !oldCover.equals(newUrl)) {
+            storageService.deleteImage(oldCover);
+        }
+
+        return newUrl;
+    }
+
+    private User getUserOrThrow(Long userId) {
+        if (userRepository == null) {
+            throw new IllegalStateException("User repository is not configured");
+        }
+        return userRepository.findById(userId)
+            .orElseThrow(() -> new ResourceNotFoundException("User not found with ID: " + userId));
+    }
+
+    private void validateClientOrAdmin(User user) {
+        if (user.getRole() != Role.CLIENT && user.getRole() != Role.ADMIN) {
+            throw new AccessDeniedException("Only client accounts can manage client profiles.");
+        }
+    }
+
+    private String validateAndCleanPhone(String rawPhone, String fieldName) {
+        if (rawPhone == null || rawPhone.isBlank()) {
+            return null;
+        }
+        String cleaned = rawPhone.trim().replaceAll("^(\\+91|\\+91-|\\+91\\s|0)", "").replaceAll("[\\s\\-\\(\\)]+", "");
+        if (!INDIAN_PHONE_PATTERN.matcher(cleaned).matches()) {
+            throw new IllegalArgumentException(fieldName + " must be a valid 10-digit Indian mobile number");
+        }
+        return cleaned;
+    }
+
+    private String sanitize(String input, int maxLength) {
+        if (input == null) return null;
+        String stripped = input.replaceAll("<[^>]*>", "").trim();
+        if (stripped.length() > maxLength) {
+            return stripped.substring(0, maxLength);
+        }
+        return stripped;
     }
 
     private ListingResponse mapListingToResponse(Listing listing, PublicClientProfileResponse client, LocalTime currentTime) {
@@ -167,27 +418,25 @@ public class ClientProfileService {
         dto.setClientBusinessName(client.getBusinessName());
         dto.setClientVerified(client.isVerified());
 
-        // Compute openNow
-        dto.setOpenNow(computeOpenNow(listing.getDailyOpenTime(), listing.getDailyCloseTime(), currentTime));
+        if (listing.getDailyOpenTime() != null && listing.getDailyCloseTime() != null) {
+            LocalTime open = listing.getDailyOpenTime();
+            LocalTime close = listing.getDailyCloseTime();
+            if (open.isBefore(close)) {
+                dto.setOpenNow(!currentTime.isBefore(open) && currentTime.isBefore(close));
+            } else {
+                dto.setOpenNow(!currentTime.isBefore(open) || currentTime.isBefore(close));
+            }
+        } else {
+            dto.setOpenNow(false);
+        }
 
-        // Images
-        if (listing.getImages() != null && !listing.getImages().isEmpty()) {
-            dto.setPrimaryImageUrl(listing.getImages().get(0).getUrl());
-            List<ImageResponse> imgs = listing.getImages().stream()
-                .map(i -> new ImageResponse(i.getId(), i.getUrl(), i.getSortOrder(), i.getCreatedAt()))
+        if (listing.getImages() != null) {
+            List<ImageResponse> images = listing.getImages().stream()
+                .map(img -> new ImageResponse(img.getId(), img.getUrl(), img.getSortOrder()))
                 .collect(Collectors.toList());
-            dto.setImages(imgs);
+            dto.setImages(images);
         }
 
         return dto;
-    }
-
-    private boolean computeOpenNow(LocalTime open, LocalTime close, LocalTime current) {
-        if (open == null || close == null || current == null) return false;
-        if (open.isBefore(close)) {
-            return !current.isBefore(open) && current.isBefore(close);
-        } else {
-            return !current.isBefore(open) || current.isBefore(close);
-        }
     }
 }
