@@ -3,17 +3,11 @@ package com.myciti.service;
 import com.myciti.dto.AuditLogDto;
 import com.myciti.dto.UpdateLocationRequest;
 import com.myciti.dto.UpdateProfileRequest;
+import com.myciti.dto.UserCountsDto;
 import com.myciti.dto.UserDto;
 import com.myciti.exception.ResourceNotFoundException;
-import com.myciti.model.AccountType;
-import com.myciti.model.AuditLog;
-import com.myciti.model.Role;
-import com.myciti.model.User;
-import com.myciti.model.UserStatus;
-import com.myciti.repository.AuditLogRepository;
-import com.myciti.repository.PushSubscriptionRepository;
-import com.myciti.repository.RefreshTokenRepository;
-import com.myciti.repository.UserRepository;
+import com.myciti.model.*;
+import com.myciti.repository.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
@@ -29,21 +23,30 @@ public class UserService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final AuditLogRepository auditLogRepository;
     private final PushSubscriptionRepository pushSubscriptionRepository;
+    private final UserSavedListingRepository userSavedListingRepository;
+    private final SubmissionRepository submissionRepository;
+    private final ClientRequestRepository clientRequestRepository;
 
     public UserService(
         UserRepository userRepository,
         RefreshTokenRepository refreshTokenRepository,
         AuditLogRepository auditLogRepository,
-        PushSubscriptionRepository pushSubscriptionRepository
+        PushSubscriptionRepository pushSubscriptionRepository,
+        UserSavedListingRepository userSavedListingRepository,
+        SubmissionRepository submissionRepository,
+        ClientRequestRepository clientRequestRepository
     ) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.auditLogRepository = auditLogRepository;
         this.pushSubscriptionRepository = pushSubscriptionRepository;
+        this.userSavedListingRepository = userSavedListingRepository;
+        this.submissionRepository = submissionRepository;
+        this.clientRequestRepository = clientRequestRepository;
     }
 
     /**
-     * Get user profile by ID.
+     * Get user profile by ID including dynamic counts for menu.
      */
     @Transactional(readOnly = true)
     public UserDto getProfile(Long userId) {
@@ -52,12 +55,12 @@ public class UserService {
     }
 
     /**
-     * Update user profile.
+     * Update user basic profile.
      * Enforces:
-     * - businessName is required for STORE and COMPANY
-     * - Phone number is stripped and validated
-     * - All text inputs are HTML stripped & trimmed
-     * - Sets profileComplete = true
+     * - Role cannot be changed via profile updates (promotions only via admin client request approval).
+     * - Name and Phone number sanitized.
+     * - For CLIENT users: clientType and businessName can be updated.
+     * - Sets profileComplete = true.
      */
     @Transactional
     public UserDto updateProfile(Long userId, UpdateProfileRequest request) {
@@ -67,38 +70,39 @@ public class UserService {
             throw new AccessDeniedException("Your account is suspended. Contact admin@myciti.com");
         }
 
-        AccountType accountType = request.getAccountType();
-        String businessName = sanitize(request.getBusinessName());
+        String name = sanitize(request.getName());
+        if (name != null) {
+            user.setName(name);
+        }
+
         String phone = sanitize(request.getPhone());
+        if (phone != null) {
+            user.setPhone(phone);
+        }
 
-        // Validate businessName for STORE and COMPANY
-        if ((accountType == AccountType.STORE || accountType == AccountType.COMPANY)) {
-            if (businessName == null || businessName.isBlank()) {
-                throw new IllegalArgumentException("Business name is required for " + accountType + " accounts");
+        // Only CLIENT accounts manage clientType & businessName here
+        if (user.getRole() == Role.CLIENT) {
+            ClientType clientType = request.getClientType();
+            String businessName = sanitize(request.getBusinessName());
+
+            if (clientType != null) {
+                user.setClientType(clientType);
             }
-        } else {
-            // For INDIVIDUAL accounts, businessName is not required
-            if (businessName != null && businessName.isBlank()) {
-                businessName = null;
+
+            if (user.getClientType() == ClientType.STORE || user.getClientType() == ClientType.COMPANY) {
+                if (businessName != null && !businessName.isBlank()) {
+                    user.setBusinessName(businessName);
+                }
+            } else if (user.getClientType() == ClientType.INDIVIDUAL) {
+                if (businessName != null && businessName.isBlank()) {
+                    user.setBusinessName(null);
+                } else if (businessName != null) {
+                    user.setBusinessName(businessName);
+                }
             }
         }
 
-        user.setAccountType(accountType);
-        user.setBusinessName(businessName);
-        user.setPhone(phone);
         user.setProfileComplete(true);
-
-        // Role transitions:
-        // - ADMIN role is immutable through profile updates.
-        // - STORE or COMPANY accounts are business owners -> Role.CLIENT.
-        // - INDIVIDUAL accounts are regular consumers -> Role.USER.
-        if (user.getRole() != Role.ADMIN) {
-            if (accountType == AccountType.STORE || accountType == AccountType.COMPANY) {
-                user.setRole(Role.CLIENT);
-            } else {
-                user.setRole(Role.USER);
-            }
-        }
 
         User saved = userRepository.save(user);
         return mapToDto(saved);
@@ -201,6 +205,28 @@ public class UserService {
             ));
     }
 
+    public UserCountsDto buildCountsForUser(User user) {
+        if (user == null || user.getId() == null) {
+            return new UserCountsDto(0L);
+        }
+        Long userId = user.getId();
+        UserCountsDto counts = new UserCountsDto();
+        counts.setSavedCount(userSavedListingRepository.countByUserId(userId));
+
+        if (user.getRole() == Role.CLIENT || user.getRole() == Role.ADMIN) {
+            counts.setPendingCount(submissionRepository.countByUserIdAndStatus(userId, SubmissionStatus.PENDING));
+            counts.setApprovedCount(submissionRepository.countByUserIdAndStatus(userId, SubmissionStatus.APPROVED));
+            counts.setDeclinedCount(submissionRepository.countByUserIdAndStatus(userId, SubmissionStatus.DECLINED));
+        }
+
+        if (user.getRole() == Role.ADMIN) {
+            counts.setPendingReviewCount(submissionRepository.countByStatus(SubmissionStatus.PENDING));
+            counts.setPendingClientRequestCount(clientRequestRepository.countByStatus(ClientRequestStatus.PENDING));
+        }
+
+        return counts;
+    }
+
     private User findUserById(Long id) {
         return userRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("User #" + id + " not found"));
@@ -208,12 +234,15 @@ public class UserService {
 
     private String sanitize(String input) {
         if (input == null) return null;
-        // Strip HTML tags and trim
         String cleaned = input.replaceAll("<[^>]*>", "").trim();
         return cleaned.isEmpty() ? null : cleaned;
     }
 
     private UserDto mapToDto(User user) {
-        return UserDto.from(user);
+        UserDto dto = UserDto.from(user);
+        if (user != null && user.getId() != null) {
+            dto.setCounts(buildCountsForUser(user));
+        }
+        return dto;
     }
 }

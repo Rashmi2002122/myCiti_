@@ -351,4 +351,12 @@ public class ListingService {
         listing.setContactPhone(req.getContactPhone());
         listing.setStatus(req.getStatus() != null ? req.getStatus() : com.myciti.model.Status.DRAFT);
     }
+
+    public ListingResponse toResponse(Listing listing) {
+        if (listing == null) return null;
+        java.time.ZonedDateTime nowInKolkata = java.time.ZonedDateTime.now(kolkataZone);
+        ListingResponse res = mapEntityToResponse(listing, nowInKolkata.toLocalTime(), null);
+        setImagesOnResponse(res, listing.getImages());
+        return res;
+    }
 }
