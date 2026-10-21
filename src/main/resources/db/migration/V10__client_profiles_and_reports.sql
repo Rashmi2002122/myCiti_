@@ -75,14 +75,14 @@ INSERT INTO client_profiles (
 )
 SELECT 
     u.id,
-    LOWER(REGEXP_REPLACE(REGEXP_REPLACE(COALESCE(NULLIF(TRIM(u.business_name), ''), NULLIF(TRIM(u.name), ''), 'client-' || u.id), '[^a-zA-Z0-9]+', '-', 'g'), '^-+|-+$', '', 'g')) || '-' || u.id,
+    COALESCE(NULLIF(LOWER(REGEXP_REPLACE(REGEXP_REPLACE(COALESCE(NULLIF(TRIM(u.business_name), ''), NULLIF(TRIM(u.name), ''), 'client'), '[^a-zA-Z0-9]+', '-', 'g'), '^-+|-+$', '', 'g')), ''), 'client') || '-' || u.id,
     COALESCE(NULLIF(TRIM(u.business_name), ''), NULLIF(TRIM(u.name), ''), 'Client ' || u.id),
     COALESCE(NULLIF(TRIM(u.client_type), ''), 'STORE'),
     'ACTIVE',
     FALSE,
     FALSE,
-    u.created_at,
-    u.updated_at
+    COALESCE(u.created_at, CURRENT_TIMESTAMP),
+    CURRENT_TIMESTAMP
 FROM users u
 WHERE u.role = 'CLIENT'
   AND NOT EXISTS (SELECT 1 FROM client_profiles cp WHERE cp.user_id = u.id);
