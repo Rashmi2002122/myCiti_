@@ -54,7 +54,8 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
                 POWER(SIN(RADIANS(l.latitude - :userLat) / 2.0), 2) +
                 COS(RADIANS(:userLat)) * COS(RADIANS(l.latitude)) *
                 POWER(SIN(RADIANS(l.longitude - :userLng) / 2.0), 2)
-            ))) AS distance_km
+            ))) AS distance_km,
+            l.client_profile_id
         FROM listings l
         WHERE l.status = 'PUBLISHED'
           AND :currentDate BETWEEN l.start_date AND l.end_date

@@ -4,10 +4,13 @@ import com.myciti.dto.ImageResponse;
 import com.myciti.dto.ListingResponse;
 import com.myciti.exception.ResourceNotFoundException;
 import com.myciti.model.Category;
+import com.myciti.model.ClientProfile;
 import com.myciti.model.Listing;
 import com.myciti.model.ListingImage;
+import com.myciti.repository.ClientProfileRepository;
 import com.myciti.repository.ListingImageRepository;
 import com.myciti.repository.ListingRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -26,6 +29,9 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,16 +39,28 @@ public class ListingService {
 
     private final ListingRepository listingRepository;
     private final ListingImageRepository listingImageRepository;
+    private final ClientProfileRepository clientProfileRepository;
     private final ZoneId kolkataZone;
+
+    @Autowired
+    public ListingService(
+        ListingRepository listingRepository,
+        ListingImageRepository listingImageRepository,
+        ClientProfileRepository clientProfileRepository,
+        @Value("${app.timezone:Asia/Kolkata}") String timeZone
+    ) {
+        this.listingRepository = listingRepository;
+        this.listingImageRepository = listingImageRepository;
+        this.clientProfileRepository = clientProfileRepository;
+        this.kolkataZone = ZoneId.of(timeZone);
+    }
 
     public ListingService(
         ListingRepository listingRepository,
         ListingImageRepository listingImageRepository,
         @Value("${app.timezone:Asia/Kolkata}") String timeZone
     ) {
-        this.listingRepository = listingRepository;
-        this.listingImageRepository = listingImageRepository;
-        this.kolkataZone = ZoneId.of(timeZone);
+        this(listingRepository, listingImageRepository, null, timeZone);
     }
 
     /**
@@ -95,6 +113,10 @@ public class ListingService {
                 setImagesOnResponse(response, imgs);
                 responses.add(response);
             }
+
+            // Batch enrich client business profile metadata
+            enrichClientProfilesBatch(responses);
+
             return responses;
         } else {
             List<Listing> listings = listingRepository.findActiveWithoutDistance(today, categoryStr, cityStr, trimmedQ);
@@ -107,7 +129,7 @@ public class ListingService {
                 .findByListingIdInOrderBySortOrderAsc(listingIds).stream()
                 .collect(Collectors.groupingBy(img -> img.getListing().getId()));
 
-            return listings.stream()
+            List<ListingResponse> responses = listings.stream()
                 .map(listing -> {
                     ListingResponse response = mapEntityToResponse(listing, currentTime, null);
                     List<ListingImage> imgs = imagesByListingId.getOrDefault(listing.getId(), List.of());
@@ -115,6 +137,11 @@ public class ListingService {
                     return response;
                 })
                 .collect(Collectors.toList());
+
+            // Batch enrich client business profile metadata
+            enrichClientProfilesBatch(responses);
+
+            return responses;
         }
     }
 
@@ -130,6 +157,7 @@ public class ListingService {
         ZonedDateTime nowInKolkata = ZonedDateTime.now(kolkataZone);
         ListingResponse response = mapEntityToResponse(listing, nowInKolkata.toLocalTime(), null);
         setImagesOnResponse(response, listing.getImages());
+        enrichClientProfile(response, listing.getClientProfileId());
         return response;
     }
 
@@ -169,6 +197,47 @@ public class ListingService {
         }
     }
 
+    private void enrichClientProfile(ListingResponse response, Long clientProfileId) {
+        if (response == null || clientProfileId == null || clientProfileRepository == null) {
+            return;
+        }
+        clientProfileRepository.findById(clientProfileId).ifPresent(cp -> {
+            response.setClientProfileId(cp.getId());
+            response.setClientSlug(cp.getSlug());
+            response.setClientBusinessName(cp.getBusinessName());
+            response.setClientLogoUrl(cp.getLogoUrl());
+            response.setClientVerified(cp.isVerified());
+            response.setClientType(cp.getClientType() != null ? cp.getClientType().name() : null);
+        });
+    }
+
+    private void enrichClientProfilesBatch(List<ListingResponse> responses) {
+        if (responses == null || responses.isEmpty() || clientProfileRepository == null) {
+            return;
+        }
+        Set<Long> profileIds = responses.stream()
+            .map(ListingResponse::getClientProfileId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        if (profileIds.isEmpty()) {
+            return;
+        }
+        Map<Long, ClientProfile> profiles = clientProfileRepository.findAllById(profileIds).stream()
+            .collect(Collectors.toMap(ClientProfile::getId, Function.identity(), (a, b) -> a));
+        for (ListingResponse resp : responses) {
+            if (resp.getClientProfileId() != null) {
+                ClientProfile cp = profiles.get(resp.getClientProfileId());
+                if (cp != null) {
+                    resp.setClientSlug(cp.getSlug());
+                    resp.setClientBusinessName(cp.getBusinessName());
+                    resp.setClientLogoUrl(cp.getLogoUrl());
+                    resp.setClientVerified(cp.isVerified());
+                    resp.setClientType(cp.getClientType() != null ? cp.getClientType().name() : null);
+                }
+            }
+        }
+    }
+
     private ListingResponse mapEntityToResponse(Listing listing, LocalTime currentTime, Double distanceKm) {
         ListingResponse dto = new ListingResponse();
         dto.setId(listing.getId());
@@ -189,6 +258,7 @@ public class ListingService {
         dto.setStatus(listing.getStatus());
         dto.setCreatedAt(listing.getCreatedAt());
         dto.setUpdatedAt(listing.getUpdatedAt());
+        dto.setClientProfileId(listing.getClientProfileId());
         dto.setDistanceKm(distanceKm != null ? roundTwoDecimals(distanceKm) : null);
         dto.setOpenNow(computeOpenNow(listing.getDailyOpenTime(), listing.getDailyCloseTime(), currentTime));
         return dto;
@@ -200,7 +270,7 @@ public class ListingService {
         // 0: id, 1: title, 2: category, 3: description, 4: address, 5: landmark,
         // 6: city, 7: latitude, 8: longitude, 9: start_date, 10: end_date, 11: daily_open_time,
         // 12: daily_close_time, 13: offer_text, 14: contact_phone, 15: status,
-        // 16: created_at, 17: updated_at, 18: distance_km
+        // 16: created_at, 17: updated_at, 18: distance_km, 19: client_profile_id
         dto.setId(((Number) row[0]).longValue());
         dto.setTitle((String) row[1]);
         dto.setCategory(Category.valueOf((String) row[2]));
@@ -240,6 +310,10 @@ public class ListingService {
             dto.setDistanceKm(roundTwoDecimals(distance));
         }
 
+        if (row.length > 19 && row[19] != null) {
+            dto.setClientProfileId(((Number) row[19]).longValue());
+        }
+
         dto.setOpenNow(computeOpenNow(dto.getDailyOpenTime(), dto.getDailyCloseTime(), currentTime));
         return dto;
     }
@@ -255,13 +329,16 @@ public class ListingService {
     public List<ListingResponse> getAllListingsForAdmin() {
         ZonedDateTime nowInKolkata = ZonedDateTime.now(kolkataZone);
         LocalTime currentTime = nowInKolkata.toLocalTime();
-        return listingRepository.findAll().stream()
+        List<ListingResponse> responses = listingRepository.findAll().stream()
             .map(l -> {
                 ListingResponse res = mapEntityToResponse(l, currentTime, null);
                 setImagesOnResponse(res, l.getImages());
                 return res;
             })
             .collect(Collectors.toList());
+
+        enrichClientProfilesBatch(responses);
+        return responses;
     }
 
     /**
@@ -277,7 +354,9 @@ public class ListingService {
         copyProperties(req, listing);
         Listing saved = listingRepository.save(listing);
         ZonedDateTime nowInKolkata = ZonedDateTime.now(kolkataZone);
-        return mapEntityToResponse(saved, nowInKolkata.toLocalTime(), null);
+        ListingResponse res = mapEntityToResponse(saved, nowInKolkata.toLocalTime(), null);
+        enrichClientProfile(res, saved.getClientProfileId());
+        return res;
     }
 
     /**
@@ -296,6 +375,7 @@ public class ListingService {
         ZonedDateTime nowInKolkata = ZonedDateTime.now(kolkataZone);
         ListingResponse res = mapEntityToResponse(updated, nowInKolkata.toLocalTime(), null);
         setImagesOnResponse(res, updated.getImages());
+        enrichClientProfile(res, updated.getClientProfileId());
         return res;
     }
 
@@ -357,6 +437,7 @@ public class ListingService {
         java.time.ZonedDateTime nowInKolkata = java.time.ZonedDateTime.now(kolkataZone);
         ListingResponse res = mapEntityToResponse(listing, nowInKolkata.toLocalTime(), null);
         setImagesOnResponse(res, listing.getImages());
+        enrichClientProfile(res, listing.getClientProfileId());
         return res;
     }
 }

@@ -419,6 +419,8 @@ public class ClientProfileService {
         dto.setClientSlug(client.getSlug());
         dto.setClientBusinessName(client.getBusinessName());
         dto.setClientVerified(client.isVerified());
+        dto.setClientLogoUrl(client.getLogoUrl());
+        dto.setClientType(client.getClientType() != null ? client.getClientType().name() : null);
 
         if (listing.getDailyOpenTime() != null && listing.getDailyCloseTime() != null) {
             LocalTime open = listing.getDailyOpenTime();
