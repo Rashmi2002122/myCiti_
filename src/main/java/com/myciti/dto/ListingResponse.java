@@ -29,6 +29,10 @@ public class ListingResponse {
     private Double distanceKm;
     private String primaryImageUrl;
     private List<ImageResponse> images;
+    private Long clientProfileId;
+    private String clientSlug;
+    private String clientBusinessName;
+    private Boolean clientVerified;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -209,5 +213,37 @@ public class ListingResponse {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Long getClientProfileId() {
+        return clientProfileId;
+    }
+
+    public void setClientProfileId(Long clientProfileId) {
+        this.clientProfileId = clientProfileId;
+    }
+
+    public String getClientSlug() {
+        return clientSlug;
+    }
+
+    public void setClientSlug(String clientSlug) {
+        this.clientSlug = clientSlug;
+    }
+
+    public String getClientBusinessName() {
+        return clientBusinessName;
+    }
+
+    public void setClientBusinessName(String clientBusinessName) {
+        this.clientBusinessName = clientBusinessName;
+    }
+
+    public Boolean getClientVerified() {
+        return clientVerified;
+    }
+
+    public void setClientVerified(Boolean clientVerified) {
+        this.clientVerified = clientVerified;
     }
 }

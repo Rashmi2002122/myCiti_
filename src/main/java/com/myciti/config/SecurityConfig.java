@@ -48,6 +48,7 @@ public class SecurityConfig {
                 // Public endpoints
                 .requestMatchers("/", "/health").permitAll()
                 .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/clients/**").permitAll()
                 .requestMatchers("/api/listings/**").permitAll()
                 .requestMatchers("/api/ads/active").permitAll()
                 .requestMatchers("/api/ads/campaigns/*/impressions", "/api/ads/campaigns/*/click").permitAll()

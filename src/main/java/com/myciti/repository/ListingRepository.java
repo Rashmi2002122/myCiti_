@@ -2,6 +2,9 @@ package com.myciti.repository;
 
 import com.myciti.model.Category;
 import com.myciti.model.Listing;
+import com.myciti.model.Status;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -108,5 +111,33 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
         @Param("category") String category,
         @Param("city") String city,
         @Param("q") String q
+    );
+
+    @Query("SELECT l FROM Listing l WHERE l.clientProfileId = :clientProfileId " +
+           "AND l.status = com.myciti.model.Status.PUBLISHED " +
+           "AND :currentDate BETWEEN l.startDate AND l.endDate " +
+           "ORDER BY l.startDate ASC")
+    Page<Listing> findActiveClientListings(
+        @Param("clientProfileId") Long clientProfileId,
+        @Param("currentDate") LocalDate currentDate,
+        Pageable pageable
+    );
+
+    @Query("SELECT l FROM Listing l WHERE l.clientProfileId = :clientProfileId " +
+           "AND l.status = com.myciti.model.Status.PUBLISHED " +
+           "AND l.startDate > :currentDate " +
+           "ORDER BY l.startDate ASC")
+    Page<Listing> findUpcomingClientListings(
+        @Param("clientProfileId") Long clientProfileId,
+        @Param("currentDate") LocalDate currentDate,
+        Pageable pageable
+    );
+
+    long countByClientProfileIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+        Long clientProfileId, Status status, LocalDate d1, LocalDate d2
+    );
+
+    long countByClientProfileIdAndStatusAndStartDateAfter(
+        Long clientProfileId, Status status, LocalDate date
     );
 }

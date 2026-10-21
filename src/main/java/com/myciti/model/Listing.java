@@ -65,6 +65,9 @@ public class Listing {
     @Column(name = "source_submission_id")
     private Long sourceSubmissionId;
 
+    @Column(name = "client_profile_id")
+    private Long clientProfileId;
+
     @OneToMany(mappedBy = "listing", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderBy("sortOrder ASC")
     private List<ListingImage> images = new ArrayList<>();
@@ -257,5 +260,13 @@ public class Listing {
 
     public void setSourceSubmissionId(Long sourceSubmissionId) {
         this.sourceSubmissionId = sourceSubmissionId;
+    }
+
+    public Long getClientProfileId() {
+        return clientProfileId;
+    }
+
+    public void setClientProfileId(Long clientProfileId) {
+        this.clientProfileId = clientProfileId;
     }
 }

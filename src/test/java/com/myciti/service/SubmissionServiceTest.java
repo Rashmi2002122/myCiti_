@@ -47,6 +47,9 @@ public class SubmissionServiceTest {
     @Mock
     private EmailNotificationService emailNotificationService;
 
+    @Mock
+    private com.myciti.repository.ClientProfileRepository clientProfileRepository;
+
     private SubmissionService submissionService;
 
     private User testUser;
@@ -60,7 +63,8 @@ public class SubmissionServiceTest {
                 listingRepository,
                 auditLogRepository,
                 storageService,
-                emailNotificationService
+                emailNotificationService,
+                clientProfileRepository
         );
 
         ReflectionTestUtils.setField(submissionService, "minLat", 6.00);

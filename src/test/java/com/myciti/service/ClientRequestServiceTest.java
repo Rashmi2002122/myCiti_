@@ -33,6 +33,9 @@ public class ClientRequestServiceTest {
     @Mock
     private AuditLogRepository auditLogRepository;
 
+    @Mock
+    private ClientProfileService clientProfileService;
+
     private ClientRequestService clientRequestService;
 
     private User normalUser;
@@ -41,7 +44,7 @@ public class ClientRequestServiceTest {
 
     @BeforeEach
     void setUp() {
-        clientRequestService = new ClientRequestService(clientRequestRepository, userRepository, auditLogRepository);
+        clientRequestService = new ClientRequestService(clientRequestRepository, userRepository, auditLogRepository, clientProfileService);
 
         normalUser = new User("sub-1", "user@test.com", "Regular User", "https://img.com/u1.jpg");
         normalUser.setId(1L);
