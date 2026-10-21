@@ -61,6 +61,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/announcements/**").hasAnyRole("CLIENT", "ADMIN")
                 // User signed-in endpoints
                 .requestMatchers("/api/me/**").authenticated()
+                .requestMatchers("/api/client-requests/**").authenticated()
                 .requestMatchers("/api/notifications/**").authenticated()
                 .requestMatchers("/api/ads/campaigns/*/report").authenticated()
                 .anyRequest().authenticated()

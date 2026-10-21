@@ -1,14 +1,10 @@
 package com.myciti.service;
 
+import com.myciti.dto.UpdateLocationRequest;
 import com.myciti.dto.UpdateProfileRequest;
 import com.myciti.dto.UserDto;
-import com.myciti.model.AccountType;
-import com.myciti.model.AuditLog;
-import com.myciti.model.User;
-import com.myciti.model.UserStatus;
-import com.myciti.repository.AuditLogRepository;
-import com.myciti.repository.RefreshTokenRepository;
-import com.myciti.repository.UserRepository;
+import com.myciti.model.*;
+import com.myciti.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,74 +32,145 @@ public class UserServiceTest {
     private AuditLogRepository auditLogRepository;
 
     @Mock
-    private com.myciti.repository.PushSubscriptionRepository pushSubscriptionRepository;
+    private PushSubscriptionRepository pushSubscriptionRepository;
+
+    @Mock
+    private UserSavedListingRepository userSavedListingRepository;
+
+    @Mock
+    private SubmissionRepository submissionRepository;
+
+    @Mock
+    private ClientRequestRepository clientRequestRepository;
 
     private UserService userService;
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository, refreshTokenRepository, auditLogRepository, pushSubscriptionRepository);
+        userService = new UserService(
+            userRepository,
+            refreshTokenRepository,
+            auditLogRepository,
+            pushSubscriptionRepository,
+            userSavedListingRepository,
+            submissionRepository,
+            clientRequestRepository
+        );
     }
 
     @Test
-    void updateProfile_individual_success() {
+    void getProfile_userRole_returnsOnlySavedCount() {
         User user = new User("sub-1", "user@test.com", "Name", null);
         user.setId(1L);
+        user.setRole(Role.USER);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userSavedListingRepository.countByUserId(1L)).thenReturn(5L);
+
+        UserDto dto = userService.getProfile(1L);
+
+        assertNotNull(dto.getCounts());
+        assertEquals(5L, dto.getCounts().getSavedCount());
+        assertNull(dto.getCounts().getPendingCount());
+        assertNull(dto.getCounts().getApprovedCount());
+        assertNull(dto.getCounts().getDeclinedCount());
+        assertNull(dto.getCounts().getPendingReviewCount());
+        assertNull(dto.getCounts().getPendingClientRequestCount());
+    }
+
+    @Test
+    void getProfile_clientRole_returnsClientCounts() {
+        User client = new User("sub-client", "client@test.com", "Client", null);
+        client.setId(2L);
+        client.setRole(Role.CLIENT);
+        when(userRepository.findById(2L)).thenReturn(Optional.of(client));
+        when(userSavedListingRepository.countByUserId(2L)).thenReturn(3L);
+        when(submissionRepository.countByUserIdAndStatus(2L, SubmissionStatus.PENDING)).thenReturn(1L);
+        when(submissionRepository.countByUserIdAndStatus(2L, SubmissionStatus.APPROVED)).thenReturn(4L);
+        when(submissionRepository.countByUserIdAndStatus(2L, SubmissionStatus.DECLINED)).thenReturn(0L);
+
+        UserDto dto = userService.getProfile(2L);
+
+        assertNotNull(dto.getCounts());
+        assertEquals(3L, dto.getCounts().getSavedCount());
+        assertEquals(1L, dto.getCounts().getPendingCount());
+        assertEquals(4L, dto.getCounts().getApprovedCount());
+        assertEquals(0L, dto.getCounts().getDeclinedCount());
+        assertNull(dto.getCounts().getPendingReviewCount());
+        assertNull(dto.getCounts().getPendingClientRequestCount());
+    }
+
+    @Test
+    void getProfile_adminRole_returnsAllCounts() {
+        User admin = new User("sub-admin", "admin@test.com", "Admin", null);
+        admin.setId(99L);
+        admin.setRole(Role.ADMIN);
+        when(userRepository.findById(99L)).thenReturn(Optional.of(admin));
+        when(userSavedListingRepository.countByUserId(99L)).thenReturn(2L);
+        when(submissionRepository.countByUserIdAndStatus(99L, SubmissionStatus.PENDING)).thenReturn(0L);
+        when(submissionRepository.countByUserIdAndStatus(99L, SubmissionStatus.APPROVED)).thenReturn(10L);
+        when(submissionRepository.countByUserIdAndStatus(99L, SubmissionStatus.DECLINED)).thenReturn(1L);
+        when(submissionRepository.countByStatus(SubmissionStatus.PENDING)).thenReturn(7L);
+        when(clientRequestRepository.countByStatus(ClientRequestStatus.PENDING)).thenReturn(3L);
+
+        UserDto dto = userService.getProfile(99L);
+
+        assertNotNull(dto.getCounts());
+        assertEquals(2L, dto.getCounts().getSavedCount());
+        assertEquals(0L, dto.getCounts().getPendingCount());
+        assertEquals(10L, dto.getCounts().getApprovedCount());
+        assertEquals(1L, dto.getCounts().getDeclinedCount());
+        assertEquals(7L, dto.getCounts().getPendingReviewCount());
+        assertEquals(3L, dto.getCounts().getPendingClientRequestCount());
+    }
+
+    @Test
+    void updateProfile_user_cannotSelfEscalateToClient() {
+        User user = new User("sub-1", "user@test.com", "Regular User", null);
+        user.setId(1L);
+        user.setRole(Role.USER);
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        UpdateProfileRequest request = new UpdateProfileRequest(AccountType.INDIVIDUAL, null, "9830112233");
+        UpdateProfileRequest request = new UpdateProfileRequest(AccountType.STORE, "Attempted Store", "9830112233");
         UserDto result = userService.updateProfile(1L, request);
 
         assertTrue(result.isProfileComplete());
-        assertEquals(AccountType.INDIVIDUAL, result.getAccountType());
         assertEquals("9830112233", result.getPhone());
+        // Crucial security invariant: Role remains USER!
+        assertEquals(Role.USER, result.getRole());
         assertNull(result.getBusinessName());
-        assertEquals(com.myciti.model.Role.USER, result.getRole());
     }
 
     @Test
-    void updateProfile_store_promotesToClient() {
-        User user = new User("sub-store", "biz@test.com", "Business Owner", null);
-        user.setId(10L);
-        when(userRepository.findById(10L)).thenReturn(Optional.of(user));
+    void updateProfile_clientCanUpdateBusinessName() {
+        User client = new User("sub-client", "client@test.com", "Business Owner", null);
+        client.setId(10L);
+        client.setRole(Role.CLIENT);
+        client.setClientType(ClientType.STORE);
+        when(userRepository.findById(10L)).thenReturn(Optional.of(client));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        UpdateProfileRequest request = new UpdateProfileRequest(AccountType.STORE, "My Sweets Shop", "9830112233");
+        UpdateProfileRequest request = new UpdateProfileRequest("Updated Store Name", ClientType.STORE, "New Store", "9830112233");
         UserDto result = userService.updateProfile(10L, request);
 
         assertTrue(result.isProfileComplete());
-        assertEquals(AccountType.STORE, result.getAccountType());
-        assertEquals("My Sweets Shop", result.getBusinessName());
-        assertEquals(com.myciti.model.Role.CLIENT, result.getRole());
+        assertEquals("New Store", result.getBusinessName());
+        assertEquals(ClientType.STORE, result.getClientType());
+        assertEquals(Role.CLIENT, result.getRole());
     }
 
     @Test
     void updateProfile_adminUser_retainsAdminRole() {
         User user = new User("sub-admin", "admin@test.com", "Admin Person", null);
         user.setId(99L);
-        user.setRole(com.myciti.model.Role.ADMIN);
+        user.setRole(Role.ADMIN);
         when(userRepository.findById(99L)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
         UpdateProfileRequest request = new UpdateProfileRequest(AccountType.INDIVIDUAL, null, "9830112233");
         UserDto result = userService.updateProfile(99L, request);
 
-        assertEquals(com.myciti.model.Role.ADMIN, result.getRole());
-    }
-
-    @Test
-    void updateProfile_storeWithoutBusinessName_throwsIllegalArgumentException() {
-        User user = new User("sub-2", "store@test.com", "Store Owner", null);
-        user.setId(2L);
-        when(userRepository.findById(2L)).thenReturn(Optional.of(user));
-
-        UpdateProfileRequest request = new UpdateProfileRequest(AccountType.STORE, "   ", "9830112233");
-
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-            userService.updateProfile(2L, request)
-        );
-        assertTrue(ex.getMessage().contains("Business name is required"));
+        assertEquals(Role.ADMIN, result.getRole());
     }
 
     @Test
@@ -114,7 +181,6 @@ public class UserServiceTest {
         when(userRepository.findById(3L)).thenReturn(Optional.of(user));
 
         UpdateProfileRequest request = new UpdateProfileRequest(AccountType.INDIVIDUAL, null, "9830112233");
-
         assertThrows(AccessDeniedException.class, () -> userService.updateProfile(3L, request));
     }
 
@@ -153,7 +219,7 @@ public class UserServiceTest {
         when(userRepository.findById(5L)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        com.myciti.dto.UpdateLocationRequest req = new com.myciti.dto.UpdateLocationRequest(22.5726, 88.3639, "Kolkata");
+        UpdateLocationRequest req = new UpdateLocationRequest(22.5726, 88.3639, "Kolkata");
         UserDto result = userService.updateLocation(5L, req);
 
         assertEquals(22.5726, result.getCoarseLat());
@@ -169,7 +235,7 @@ public class UserServiceTest {
         user.setStatus(UserStatus.SUSPENDED);
         when(userRepository.findById(6L)).thenReturn(Optional.of(user));
 
-        com.myciti.dto.UpdateLocationRequest req = new com.myciti.dto.UpdateLocationRequest(22.5726, 88.3639, "Kolkata");
+        UpdateLocationRequest req = new UpdateLocationRequest(22.5726, 88.3639, "Kolkata");
         assertThrows(AccessDeniedException.class, () -> userService.updateLocation(6L, req));
     }
 }

@@ -23,8 +23,8 @@ public class User {
     private String pictureUrl;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "account_type", length = 50)
-    private AccountType accountType;
+    @Column(name = "client_type", length = 50)
+    private ClientType clientType;
 
     @Column(name = "business_name")
     private String businessName;
@@ -115,12 +115,34 @@ public class User {
         this.pictureUrl = pictureUrl;
     }
 
+    public ClientType getClientType() {
+        return clientType;
+    }
+
+    public void setClientType(ClientType clientType) {
+        this.clientType = clientType;
+    }
+
+    // Backward-compatible alias for accountType
     public AccountType getAccountType() {
-        return accountType;
+        if (clientType == null) return null;
+        try {
+            return AccountType.valueOf(clientType.name());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public void setAccountType(AccountType accountType) {
-        this.accountType = accountType;
+        if (accountType == null) {
+            this.clientType = null;
+        } else {
+            try {
+                this.clientType = ClientType.valueOf(accountType.name());
+            } catch (Exception e) {
+                this.clientType = null;
+            }
+        }
     }
 
     public String getBusinessName() {
