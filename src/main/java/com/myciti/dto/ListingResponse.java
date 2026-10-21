@@ -32,7 +32,9 @@ public class ListingResponse {
     private Long clientProfileId;
     private String clientSlug;
     private String clientBusinessName;
+    private String clientLogoUrl;
     private Boolean clientVerified;
+    private String clientType;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -239,11 +241,27 @@ public class ListingResponse {
         this.clientBusinessName = clientBusinessName;
     }
 
+    public String getClientLogoUrl() {
+        return clientLogoUrl;
+    }
+
+    public void setClientLogoUrl(String clientLogoUrl) {
+        this.clientLogoUrl = clientLogoUrl;
+    }
+
     public Boolean getClientVerified() {
         return clientVerified;
     }
 
     public void setClientVerified(Boolean clientVerified) {
         this.clientVerified = clientVerified;
+    }
+
+    public String getClientType() {
+        return clientType;
+    }
+
+    public void setClientType(String clientType) {
+        this.clientType = clientType;
     }
 }
