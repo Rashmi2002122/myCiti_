@@ -42,6 +42,7 @@ public class SubmissionService {
     private final AuditLogRepository auditLogRepository;
     private final StorageService storageService;
     private final EmailNotificationService emailNotificationService;
+    private final com.myciti.repository.ClientProfileRepository clientProfileRepository;
 
     @Value("${app.city.bbox.min-lat:6.00}")
     private double minLat;
@@ -60,13 +61,15 @@ public class SubmissionService {
                              ListingRepository listingRepository,
                              AuditLogRepository auditLogRepository,
                              StorageService storageService,
-                             EmailNotificationService emailNotificationService) {
+                             EmailNotificationService emailNotificationService,
+                             com.myciti.repository.ClientProfileRepository clientProfileRepository) {
         this.submissionRepository = submissionRepository;
         this.userRepository = userRepository;
         this.listingRepository = listingRepository;
         this.auditLogRepository = auditLogRepository;
         this.storageService = storageService;
         this.emailNotificationService = emailNotificationService;
+        this.clientProfileRepository = clientProfileRepository;
     }
 
     @Transactional
@@ -393,6 +396,12 @@ public class SubmissionService {
         listing.setContactPhone(submission.getContactPhone());
         listing.setStatus(Status.PUBLISHED);
         listing.setSourceSubmissionId(submission.getId());
+
+        // Link clientProfileId if submitter has a client profile
+        if (submission.getUser() != null) {
+            clientProfileRepository.findByUserId(submission.getUser().getId())
+                .ifPresent(cp -> listing.setClientProfileId(cp.getId()));
+        }
 
         // Copy images
         listing.getImages().clear();

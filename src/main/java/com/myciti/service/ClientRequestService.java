@@ -22,15 +22,18 @@ public class ClientRequestService {
     private final ClientRequestRepository clientRequestRepository;
     private final UserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
+    private final ClientProfileService clientProfileService;
 
     public ClientRequestService(
         ClientRequestRepository clientRequestRepository,
         UserRepository userRepository,
-        AuditLogRepository auditLogRepository
+        AuditLogRepository auditLogRepository,
+        ClientProfileService clientProfileService
     ) {
         this.clientRequestRepository = clientRequestRepository;
         this.userRepository = userRepository;
         this.auditLogRepository = auditLogRepository;
+        this.clientProfileService = clientProfileService;
     }
 
     /**
@@ -142,7 +145,15 @@ public class ClientRequestService {
         if (user.getPhone() == null || user.getPhone().isBlank()) {
             user.setPhone(req.getContactPhone());
         }
-        userRepository.save(user);
+        User savedUser = userRepository.save(user);
+
+        // Auto-create client profile for the approved client
+        clientProfileService.createProfileForClient(
+            savedUser,
+            req.getBusinessName(),
+            req.getClientType(),
+            req.getContactPhone()
+        );
 
         ClientRequest saved = clientRequestRepository.save(req);
 

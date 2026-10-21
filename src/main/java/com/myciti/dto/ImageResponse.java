@@ -11,6 +11,10 @@ public class ImageResponse {
     public ImageResponse() {
     }
 
+    public ImageResponse(Long id, String url, Integer sortOrder) {
+        this(id, url, sortOrder, null);
+    }
+
     public ImageResponse(Long id, String url, Integer sortOrder, Instant createdAt) {
         this.id = id;
         this.url = url;
