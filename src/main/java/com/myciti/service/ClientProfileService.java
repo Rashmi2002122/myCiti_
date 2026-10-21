@@ -10,6 +10,7 @@ import com.myciti.model.*;
 import com.myciti.repository.ClientProfileRepository;
 import com.myciti.repository.ListingRepository;
 import com.myciti.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -44,6 +45,7 @@ public class ClientProfileService {
     private final double minLng;
     private final double maxLng;
 
+    @Autowired
     public ClientProfileService(
         ClientProfileRepository clientProfileRepository,
         ListingRepository listingRepository,
