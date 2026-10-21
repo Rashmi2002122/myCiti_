@@ -11,6 +11,20 @@ public interface StorageService {
     String storeImage(MultipartFile file) throws IOException;
 
     /**
+     * Store client logo: type checked by content, max 5 MB, resizes to 400px, re-encodes, strips EXIF.
+     */
+    default String storeClientLogo(MultipartFile file) throws IOException {
+        return storeImage(file);
+    }
+
+    /**
+     * Store client cover: type checked by content, max 5 MB, resizes to 1200px, re-encodes, strips EXIF.
+     */
+    default String storeClientCover(MultipartFile file) throws IOException {
+        return storeImage(file);
+    }
+
+    /**
      * Delete an image by its URL or relative path if applicable.
      */
     void deleteImage(String url);

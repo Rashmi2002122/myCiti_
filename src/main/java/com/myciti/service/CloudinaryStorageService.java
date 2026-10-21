@@ -18,6 +18,7 @@ public class CloudinaryStorageService implements StorageService {
 
     private static final Logger log = LoggerFactory.getLogger(CloudinaryStorageService.class);
     private static final long MAX_FILE_SIZE = 10 * 1024 * 1024L; // 10 MB
+    private static final long CLIENT_MAX_FILE_SIZE = 5 * 1024 * 1024L; // 5 MB
 
     private final Cloudinary cloudinary;
 
@@ -37,12 +38,69 @@ public class CloudinaryStorageService implements StorageService {
 
     @Override
     public String storeImage(MultipartFile file) throws IOException {
+        validateImageFile(file, MAX_FILE_SIZE);
+
+        Map<?, ?> uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
+                "folder", "myciti",
+                "transformation", new Transformation<>()
+                        .width(1200)
+                        .height(1200)
+                        .crop("limit")
+                        .quality("auto")
+                        .fetchFormat("auto")
+        ));
+
+        String secureUrl = (String) uploadResult.get("secure_url");
+        log.info("Successfully uploaded image to Cloudinary: {}", secureUrl);
+        return secureUrl;
+    }
+
+    @Override
+    public String storeClientLogo(MultipartFile file) throws IOException {
+        validateImageFile(file, CLIENT_MAX_FILE_SIZE);
+
+        Map<?, ?> uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
+                "folder", "myciti/clients/logos",
+                "transformation", new Transformation<>()
+                        .width(400)
+                        .crop("limit")
+                        .quality("auto")
+                        .fetchFormat("auto")
+                        .flags("strip_profile")
+        ));
+
+        String secureUrl = (String) uploadResult.get("secure_url");
+        log.info("Successfully uploaded client logo to Cloudinary: {}", secureUrl);
+        return secureUrl;
+    }
+
+    @Override
+    public String storeClientCover(MultipartFile file) throws IOException {
+        validateImageFile(file, CLIENT_MAX_FILE_SIZE);
+
+        Map<?, ?> uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
+                "folder", "myciti/clients/covers",
+                "transformation", new Transformation<>()
+                        .width(1200)
+                        .crop("limit")
+                        .quality("auto")
+                        .fetchFormat("auto")
+                        .flags("strip_profile")
+        ));
+
+        String secureUrl = (String) uploadResult.get("secure_url");
+        log.info("Successfully uploaded client cover to Cloudinary: {}", secureUrl);
+        return secureUrl;
+    }
+
+    private void validateImageFile(MultipartFile file, long maxSizeBytes) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Cannot store empty file");
         }
 
-        if (file.getSize() > MAX_FILE_SIZE) {
-            throw new IllegalArgumentException("File size exceeds 10 MB limit (actual: " + (file.getSize() / 1024 / 1024) + " MB)");
+        if (file.getSize() > maxSizeBytes) {
+            long maxMb = maxSizeBytes / (1024 * 1024);
+            throw new IllegalArgumentException("File size exceeds " + maxMb + " MB limit (actual: " + (file.getSize() / 1024 / 1024) + " MB)");
         }
 
         String originalFilename = file.getOriginalFilename();
@@ -57,20 +115,6 @@ public class CloudinaryStorageService implements StorageService {
         if (!isValidImageMagicBytes(fileBytes)) {
             throw new IllegalArgumentException("File content does not match a valid JPG, PNG, or WEBP image header");
         }
-
-        Map<?, ?> uploadResult = cloudinary.uploader().upload(fileBytes, ObjectUtils.asMap(
-                "folder", "myciti",
-                "transformation", new Transformation<>()
-                        .width(1200)
-                        .height(1200)
-                        .crop("limit")
-                        .quality("auto")
-                        .fetchFormat("auto")
-        ));
-
-        String secureUrl = (String) uploadResult.get("secure_url");
-        log.info("Successfully uploaded image to Cloudinary: {}", secureUrl);
-        return secureUrl;
     }
 
     @Override
