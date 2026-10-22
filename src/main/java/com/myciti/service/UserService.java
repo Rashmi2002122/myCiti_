@@ -5,9 +5,11 @@ import com.myciti.dto.UpdateLocationRequest;
 import com.myciti.dto.UpdateProfileRequest;
 import com.myciti.dto.UserCountsDto;
 import com.myciti.dto.UserDto;
+import com.myciti.event.UserStatusChangedEvent;
 import com.myciti.exception.ResourceNotFoundException;
 import com.myciti.model.*;
 import com.myciti.repository.*;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
@@ -26,6 +28,7 @@ public class UserService {
     private final UserSavedListingRepository userSavedListingRepository;
     private final SubmissionRepository submissionRepository;
     private final ClientRequestRepository clientRequestRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public UserService(
         UserRepository userRepository,
@@ -36,6 +39,19 @@ public class UserService {
         SubmissionRepository submissionRepository,
         ClientRequestRepository clientRequestRepository
     ) {
+        this(userRepository, refreshTokenRepository, auditLogRepository, pushSubscriptionRepository, userSavedListingRepository, submissionRepository, clientRequestRepository, null);
+    }
+
+    public UserService(
+        UserRepository userRepository,
+        RefreshTokenRepository refreshTokenRepository,
+        AuditLogRepository auditLogRepository,
+        PushSubscriptionRepository pushSubscriptionRepository,
+        UserSavedListingRepository userSavedListingRepository,
+        SubmissionRepository submissionRepository,
+        ClientRequestRepository clientRequestRepository,
+        ApplicationEventPublisher eventPublisher
+    ) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.auditLogRepository = auditLogRepository;
@@ -43,6 +59,7 @@ public class UserService {
         this.userSavedListingRepository = userSavedListingRepository;
         this.submissionRepository = submissionRepository;
         this.clientRequestRepository = clientRequestRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -105,6 +122,9 @@ public class UserService {
         user.setProfileComplete(true);
 
         User saved = userRepository.save(user);
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new UserStatusChangedEvent(userId));
+        }
         return mapToDto(saved);
     }
 
@@ -163,6 +183,10 @@ public class UserService {
                 "USER_SUSPENDED",
                 "User #" + targetUserId + " (" + targetUser.getEmail() + ") was suspended by admin #" + adminUserId
             ));
+
+            if (eventPublisher != null) {
+                eventPublisher.publishEvent(new UserStatusChangedEvent(targetUserId));
+            }
         }
 
         return mapToDto(targetUser);
@@ -185,6 +209,10 @@ public class UserService {
                 "USER_UNSUSPENDED",
                 "User #" + targetUserId + " (" + targetUser.getEmail() + ") was unsuspended by admin #" + adminUserId
             ));
+
+            if (eventPublisher != null) {
+                eventPublisher.publishEvent(new UserStatusChangedEvent(targetUserId));
+            }
         }
 
         return mapToDto(targetUser);
