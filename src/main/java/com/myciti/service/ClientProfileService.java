@@ -439,6 +439,9 @@ public class ClientProfileService {
                 .map(img -> new ImageResponse(img.getId(), img.getUrl(), img.getSortOrder()))
                 .collect(Collectors.toList());
             dto.setImages(images);
+            if (!images.isEmpty()) {
+                dto.setPrimaryImageUrl(images.get(0).getUrl());
+            }
         }
 
         return dto;
