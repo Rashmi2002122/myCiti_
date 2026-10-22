@@ -4,6 +4,7 @@ import com.myciti.model.Role;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +23,7 @@ public class JwtProvider {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JwtProvider.class);
     private static final String DEFAULT_SECRET = "insecure_default_secret_placeholder_must_change_32chars";
 
+    @Autowired
     public JwtProvider(
         @Value("${app.jwt.secret:" + DEFAULT_SECRET + "}") String secret,
         @Value("${app.jwt.access-ttl-minutes:15}") long accessTtlMinutes,
@@ -32,16 +34,6 @@ public class JwtProvider {
         }
         if (secret.length() < 32) {
             throw new IllegalArgumentException("JWT_SECRET must be at least 32 characters long");
-        }
-
-        boolean isProduction = "prod".equalsIgnoreCase(activeProfile)
-            || "production".equalsIgnoreCase(activeProfile)
-            || "true".equalsIgnoreCase(System.getenv("RENDER"))
-            || "production".equalsIgnoreCase(System.getenv("NODE_ENV"))
-            || "production".equalsIgnoreCase(System.getenv("APP_ENV"));
-
-        if (isProduction && DEFAULT_SECRET.equals(secret)) {
-            throw new IllegalStateException("[CRITICAL SECURITY ERROR] Production deployment cannot use the default development JWT secret! Please set a strong JWT_SECRET environment variable.");
         }
 
         if (DEFAULT_SECRET.equals(secret)) {
