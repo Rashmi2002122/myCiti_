@@ -82,6 +82,9 @@ public class ListingService {
         LocalTime currentTime = nowInKolkata.toLocalTime();
 
         String trimmedQ = (q != null && !q.trim().isEmpty()) ? q.trim() : null;
+        if (trimmedQ != null && trimmedQ.length() > 100) {
+            trimmedQ = trimmedQ.substring(0, 100);
+        }
         String categoryStr = (category != null) ? category.name() : null;
         String cityStr = (city != null && !city.trim().isEmpty() && !city.equalsIgnoreCase("ALL")) ? city.trim() : null;
 

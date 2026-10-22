@@ -169,6 +169,25 @@ public class ClientRequestServiceTest {
     }
 
     @Test
+    void approveRequest_withEventPublisher_publishesUserStatusChangedEvent() {
+        org.springframework.context.ApplicationEventPublisher publisher = mock(org.springframework.context.ApplicationEventPublisher.class);
+        ClientRequestService serviceWithPublisher = new ClientRequestService(
+            clientRequestRepository, userRepository, auditLogRepository, clientProfileService, publisher
+        );
+
+        ClientRequest request = new ClientRequest(normalUser, ClientType.STORE, "Pandal Arts", "9830112233", "Artist");
+        request.setId(52L);
+
+        when(clientRequestRepository.findById(52L)).thenReturn(Optional.of(request));
+        when(userRepository.findById(99L)).thenReturn(Optional.of(adminUser));
+        when(clientRequestRepository.save(any(ClientRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        serviceWithPublisher.approveRequest(52L, 99L);
+
+        verify(publisher).publishEvent(any(com.myciti.event.UserStatusChangedEvent.class));
+    }
+
+    @Test
     void declineRequest_setsDeclinedAndDoesNotChangeUserRole() {
         ClientRequest request = new ClientRequest(normalUser, ClientType.STORE, "Pandal Arts", "9830112233", "Artist");
         request.setId(51L);

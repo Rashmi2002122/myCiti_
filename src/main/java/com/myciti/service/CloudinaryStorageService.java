@@ -48,6 +48,7 @@ public class CloudinaryStorageService implements StorageService {
                         .crop("limit")
                         .quality("auto")
                         .fetchFormat("auto")
+                        .flags("strip_profile")
         ));
 
         String secureUrl = (String) uploadResult.get("secure_url");

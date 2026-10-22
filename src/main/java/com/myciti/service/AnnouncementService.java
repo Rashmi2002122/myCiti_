@@ -5,9 +5,11 @@ import com.myciti.dto.AnnouncementResponse;
 import com.myciti.exception.ResourceNotFoundException;
 import com.myciti.model.*;
 import com.myciti.repository.AnnouncementRepository;
+import com.myciti.repository.AuditLogRepository;
 import com.myciti.repository.ListingRepository;
 import com.myciti.repository.SubmissionRepository;
 import com.myciti.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +26,26 @@ public class AnnouncementService {
     private final UserRepository userRepository;
     private final GeoTargetingService geoTargetingService;
     private final NotificationService notificationService;
+    private final AuditLogRepository auditLogRepository;
+
+    @Autowired
+    public AnnouncementService(
+        AnnouncementRepository announcementRepository,
+        ListingRepository listingRepository,
+        SubmissionRepository submissionRepository,
+        UserRepository userRepository,
+        GeoTargetingService geoTargetingService,
+        NotificationService notificationService,
+        AuditLogRepository auditLogRepository
+    ) {
+        this.announcementRepository = announcementRepository;
+        this.listingRepository = listingRepository;
+        this.submissionRepository = submissionRepository;
+        this.userRepository = userRepository;
+        this.geoTargetingService = geoTargetingService;
+        this.notificationService = notificationService;
+        this.auditLogRepository = auditLogRepository;
+    }
 
     public AnnouncementService(
         AnnouncementRepository announcementRepository,
@@ -33,12 +55,7 @@ public class AnnouncementService {
         GeoTargetingService geoTargetingService,
         NotificationService notificationService
     ) {
-        this.announcementRepository = announcementRepository;
-        this.listingRepository = listingRepository;
-        this.submissionRepository = submissionRepository;
-        this.userRepository = userRepository;
-        this.geoTargetingService = geoTargetingService;
-        this.notificationService = notificationService;
+        this(announcementRepository, listingRepository, submissionRepository, userRepository, geoTargetingService, notificationService, null);
     }
 
     /**
@@ -117,6 +134,14 @@ public class AnnouncementService {
         a.setRejectionReason(null);
         Announcement saved = announcementRepository.save(a);
 
+        if (auditLogRepository != null) {
+            auditLogRepository.save(new AuditLog(
+                resolveCurrentUserId(),
+                "ANNOUNCEMENT_APPROVED",
+                "Approved and dispatched announcement #" + announcementId + " ('" + saved.getTitle() + "')"
+            ));
+        }
+
         dispatchAnnouncement(saved);
         return AnnouncementResponse.fromEntity(saved);
     }
@@ -131,7 +156,17 @@ public class AnnouncementService {
 
         a.setStatus(AnnouncementStatus.REJECTED);
         a.setRejectionReason(reason);
-        return AnnouncementResponse.fromEntity(announcementRepository.save(a));
+        Announcement saved = announcementRepository.save(a);
+
+        if (auditLogRepository != null) {
+            auditLogRepository.save(new AuditLog(
+                resolveCurrentUserId(),
+                "ANNOUNCEMENT_REJECTED",
+                "Rejected announcement #" + announcementId + ". Reason: " + reason
+            ));
+        }
+
+        return AnnouncementResponse.fromEntity(saved);
     }
 
     /**
@@ -142,6 +177,25 @@ public class AnnouncementService {
         Announcement a = announcementRepository.findById(announcementId)
             .orElseThrow(() -> new ResourceNotFoundException("Announcement not found: " + announcementId));
         announcementRepository.delete(a);
+
+        if (auditLogRepository != null) {
+            auditLogRepository.save(new AuditLog(
+                resolveCurrentUserId(),
+                "ANNOUNCEMENT_DELETED",
+                "Admin permanently deleted announcement #" + announcementId
+            ));
+        }
+    }
+
+    private Long resolveCurrentUserId() {
+        try {
+            org.springframework.security.core.Authentication auth =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.getPrincipal() instanceof User user) {
+                return user.getId();
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     /**

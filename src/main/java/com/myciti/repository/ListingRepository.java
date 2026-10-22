@@ -77,6 +77,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
             ))) <= CAST(:radiusKm AS DOUBLE PRECISION)
           )
         ORDER BY distance_km ASC
+        LIMIT 250
         """, nativeQuery = true)
     List<Object[]> findActiveWithDistance(
         @Param("currentDate") LocalDate currentDate,
@@ -106,6 +107,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
             LOWER(l.landmark) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%'))
           )
         ORDER BY l.start_date ASC, l.title ASC
+        LIMIT 250
         """, nativeQuery = true)
     List<Listing> findActiveWithoutDistance(
         @Param("currentDate") LocalDate currentDate,

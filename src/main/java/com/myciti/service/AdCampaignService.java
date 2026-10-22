@@ -26,6 +26,7 @@ public class AdCampaignService {
     private final ListingRepository listingRepository;
     private final SubmissionRepository submissionRepository;
     private final UserRepository userRepository;
+    private final AuditLogRepository auditLogRepository;
     private final ZoneId zoneId;
 
     @Autowired
@@ -35,6 +36,7 @@ public class AdCampaignService {
         ListingRepository listingRepository,
         SubmissionRepository submissionRepository,
         UserRepository userRepository,
+        AuditLogRepository auditLogRepository,
         @Value("${app.timezone:Asia/Kolkata}") String timeZone
     ) {
         this.adCampaignRepository = adCampaignRepository;
@@ -42,7 +44,19 @@ public class AdCampaignService {
         this.listingRepository = listingRepository;
         this.submissionRepository = submissionRepository;
         this.userRepository = userRepository;
+        this.auditLogRepository = auditLogRepository;
         this.zoneId = ZoneId.of(timeZone != null && !timeZone.isBlank() ? timeZone.trim() : "Asia/Kolkata");
+    }
+
+    public AdCampaignService(
+        AdCampaignRepository adCampaignRepository,
+        AdReportRepository adReportRepository,
+        ListingRepository listingRepository,
+        SubmissionRepository submissionRepository,
+        UserRepository userRepository,
+        AuditLogRepository auditLogRepository
+    ) {
+        this(adCampaignRepository, adReportRepository, listingRepository, submissionRepository, userRepository, auditLogRepository, "Asia/Kolkata");
     }
 
     public AdCampaignService(
@@ -52,7 +66,7 @@ public class AdCampaignService {
         SubmissionRepository submissionRepository,
         UserRepository userRepository
     ) {
-        this(adCampaignRepository, adReportRepository, listingRepository, submissionRepository, userRepository, "Asia/Kolkata");
+        this(adCampaignRepository, adReportRepository, listingRepository, submissionRepository, userRepository, null, "Asia/Kolkata");
     }
 
     /**
@@ -291,7 +305,19 @@ public class AdCampaignService {
         campaign.setStatus(CampaignStatus.APPROVED);
         campaign.setRejectionReason(null);
         campaign.setUpdatedAt(Instant.now());
-        return AdCampaignResponse.fromEntity(adCampaignRepository.save(campaign));
+        AdCampaign saved = adCampaignRepository.save(campaign);
+
+        if (auditLogRepository != null) {
+            String listingTitle = (saved.getListing() != null && saved.getListing().getTitle() != null)
+                ? saved.getListing().getTitle() : "Listing #" + (saved.getListing() != null ? saved.getListing().getId() : "unknown");
+            auditLogRepository.save(new AuditLog(
+                resolveCurrentUserId(),
+                "CAMPAIGN_APPROVED",
+                "Approved ad campaign #" + campaignId + " ('" + listingTitle + "')"
+            ));
+        }
+
+        return AdCampaignResponse.fromEntity(saved);
     }
 
     @CacheEvict(value = "activeAds", allEntries = true)
@@ -301,7 +327,17 @@ public class AdCampaignService {
         campaign.setStatus(CampaignStatus.REJECTED);
         campaign.setRejectionReason(reason);
         campaign.setUpdatedAt(Instant.now());
-        return AdCampaignResponse.fromEntity(adCampaignRepository.save(campaign));
+        AdCampaign saved = adCampaignRepository.save(campaign);
+
+        if (auditLogRepository != null) {
+            auditLogRepository.save(new AuditLog(
+                resolveCurrentUserId(),
+                "CAMPAIGN_REJECTED",
+                "Rejected ad campaign #" + campaignId + ". Reason: " + reason
+            ));
+        }
+
+        return AdCampaignResponse.fromEntity(saved);
     }
 
     @CacheEvict(value = "activeAds", allEntries = true)
@@ -317,6 +353,25 @@ public class AdCampaignService {
     public void deleteCampaignAdmin(Long campaignId) {
         AdCampaign campaign = getCampaignOrThrow(campaignId);
         adCampaignRepository.delete(campaign);
+
+        if (auditLogRepository != null) {
+            auditLogRepository.save(new AuditLog(
+                resolveCurrentUserId(),
+                "CAMPAIGN_DELETED",
+                "Admin permanently deleted ad campaign #" + campaignId
+            ));
+        }
+    }
+
+    private Long resolveCurrentUserId() {
+        try {
+            org.springframework.security.core.Authentication auth =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.getPrincipal() instanceof User user) {
+                return user.getId();
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     @Transactional(readOnly = true)

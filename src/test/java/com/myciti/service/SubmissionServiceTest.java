@@ -305,6 +305,24 @@ public class SubmissionServiceTest {
     }
 
     @Test
+    void deleteSubmission_pendingSubmission_deletesAssociatedImagesAndRecord() {
+        Submission sub = new Submission();
+        sub.setId(10L);
+        sub.setUser(testUser);
+        sub.setStatus(SubmissionStatus.PENDING);
+        sub.addImage(new SubmissionImage(sub, "https://res.cloudinary.com/test/image1.jpg", 0));
+        sub.addImage(new SubmissionImage(sub, "https://res.cloudinary.com/test/image2.jpg", 1));
+
+        when(submissionRepository.findById(10L)).thenReturn(Optional.of(sub));
+
+        submissionService.deleteSubmission(10L, 1L);
+
+        verify(storageService).deleteImage("https://res.cloudinary.com/test/image1.jpg");
+        verify(storageService).deleteImage("https://res.cloudinary.com/test/image2.jpg");
+        verify(submissionRepository).delete(sub);
+    }
+
+    @Test
     void unpublishSubmission_successSetsListingToDraft() {
         Submission sub = new Submission();
         sub.setId(10L);

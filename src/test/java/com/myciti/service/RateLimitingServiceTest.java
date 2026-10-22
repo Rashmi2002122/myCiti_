@@ -46,6 +46,24 @@ class RateLimitingServiceTest {
     }
 
     @Test
+    void tryConsumeImageUpload_enforcesFifteenPerMinuteLimit() {
+        String ip = "192.168.1.150";
+        for (int i = 0; i < 15; i++) {
+            assertTrue(rateLimitingService.tryConsumeImageUpload(ip), "Upload " + (i + 1) + " should succeed");
+        }
+        assertFalse(rateLimitingService.tryConsumeImageUpload(ip), "16th upload should be rate-limited");
+    }
+
+    @Test
+    void tryConsumeSearch_enforcesSixtyPerMinuteLimit() {
+        String ip = "192.168.1.160";
+        for (int i = 0; i < 60; i++) {
+            assertTrue(rateLimitingService.tryConsumeSearch(ip), "Search " + (i + 1) + " should succeed");
+        }
+        assertFalse(rateLimitingService.tryConsumeSearch(ip), "61st search should be rate-limited");
+    }
+
+    @Test
     void evictExpired_keepsMapBounded() {
         rateLimitingService.tryConsume("1.1.1.1");
         rateLimitingService.tryConsume("2.2.2.2");

@@ -44,8 +44,10 @@ public class AuthController {
     @PostMapping("/google")
     public ResponseEntity<AuthResponse> loginWithGoogle(
         @Valid @RequestBody GoogleAuthRequest request,
+        HttpServletRequest httpRequest,
         HttpServletResponse response
     ) {
+        verifyOrigin(httpRequest);
         AuthService.AuthResult result = authService.loginWithGoogle(request.getIdToken());
         setRefreshTokenCookie(response, result.rawRefreshToken());
         // Return accessToken and user details; refreshToken is strictly isolated in the HttpOnly cookie
@@ -115,6 +117,25 @@ public class AuthController {
     private void verifyOrigin(HttpServletRequest request) {
         String origin = request.getHeader("Origin");
         if (origin == null || origin.isBlank()) {
+            String referer = request.getHeader("Referer");
+            if (referer != null && !referer.isBlank()) {
+                try {
+                    java.net.URI uri = java.net.URI.create(referer.trim());
+                    String scheme = uri.getScheme();
+                    String authority = uri.getAuthority();
+                    if (scheme != null && authority != null) {
+                        origin = scheme + "://" + authority;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        if (origin == null || origin.isBlank()) {
+            String secFetchSite = request.getHeader("Sec-Fetch-Site");
+            if ("cross-site".equalsIgnoreCase(secFetchSite)) {
+                throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden: Cross-site request rejected");
+            }
             return;
         }
 
