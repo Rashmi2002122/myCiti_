@@ -9,6 +9,7 @@ import com.myciti.event.UserStatusChangedEvent;
 import com.myciti.exception.ResourceNotFoundException;
 import com.myciti.model.*;
 import com.myciti.repository.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -42,6 +43,7 @@ public class UserService {
         this(userRepository, refreshTokenRepository, auditLogRepository, pushSubscriptionRepository, userSavedListingRepository, submissionRepository, clientRequestRepository, null);
     }
 
+    @Autowired
     public UserService(
         UserRepository userRepository,
         RefreshTokenRepository refreshTokenRepository,
