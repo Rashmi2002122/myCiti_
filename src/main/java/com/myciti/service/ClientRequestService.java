@@ -3,11 +3,13 @@ package com.myciti.service;
 import com.myciti.dto.ClientRequestResponse;
 import com.myciti.dto.CreateClientRequest;
 import com.myciti.dto.DeclineRequest;
+import com.myciti.event.UserStatusChangedEvent;
 import com.myciti.exception.ResourceNotFoundException;
 import com.myciti.model.*;
 import com.myciti.repository.AuditLogRepository;
 import com.myciti.repository.ClientRequestRepository;
 import com.myciti.repository.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
@@ -23,6 +25,7 @@ public class ClientRequestService {
     private final UserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
     private final ClientProfileService clientProfileService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ClientRequestService(
         ClientRequestRepository clientRequestRepository,
@@ -30,10 +33,21 @@ public class ClientRequestService {
         AuditLogRepository auditLogRepository,
         ClientProfileService clientProfileService
     ) {
+        this(clientRequestRepository, userRepository, auditLogRepository, clientProfileService, null);
+    }
+
+    public ClientRequestService(
+        ClientRequestRepository clientRequestRepository,
+        UserRepository userRepository,
+        AuditLogRepository auditLogRepository,
+        ClientProfileService clientProfileService,
+        ApplicationEventPublisher eventPublisher
+    ) {
         this.clientRequestRepository = clientRequestRepository;
         this.userRepository = userRepository;
         this.auditLogRepository = auditLogRepository;
         this.clientProfileService = clientProfileService;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -162,6 +176,10 @@ public class ClientRequestService {
             "CLIENT_REQUEST_APPROVED",
             "Approved client request #" + requestId + " for user #" + user.getId() + " (" + user.getEmail() + ")"
         ));
+
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new UserStatusChangedEvent(user.getId()));
+        }
 
         return ClientRequestResponse.fromEntity(saved);
     }

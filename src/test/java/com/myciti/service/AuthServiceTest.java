@@ -174,6 +174,19 @@ public class AuthServiceTest {
     }
 
     @Test
+    void refreshSession_revokedTokenReuse_revokesAllUserTokensAndThrows() {
+        User user = new User("sub-1", "user@example.com", "User", null);
+        user.setId(88L);
+        RefreshToken revokedToken = new RefreshToken(user, "revoked-hash", Instant.now().plusSeconds(3600));
+        revokedToken.setRevokedAt(Instant.now().minusSeconds(60));
+
+        when(refreshTokenRepository.findByTokenHash(anyString())).thenReturn(Optional.of(revokedToken));
+
+        assertThrows(BadCredentialsException.class, () -> authService.refreshSession("raw-token"));
+        verify(refreshTokenRepository).revokeAllForUser(eq(88L), any(Instant.class));
+    }
+
+    @Test
     void refreshSession_suspendedUser_throws403() {
         User user = new User("sub-1", "user@example.com", "User", null);
         user.setStatus(UserStatus.SUSPENDED);

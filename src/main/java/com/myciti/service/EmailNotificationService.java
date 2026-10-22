@@ -33,7 +33,7 @@ public class EmailNotificationService {
     public void notifyOwnerNewSubmission(String submissionTitle, String submitterName, String submitterEmail, Long submissionId) {
         if (!mailEnabled || mailSender == null) {
             log.info("[Notification] New advertisement submitted for review: #{} '{}' by {} ({}). (Mail sending disabled)",
-                    submissionId, submissionTitle, submitterName, submitterEmail);
+                    submissionId, submissionTitle, submitterName, maskEmail(submitterEmail));
             return;
         }
 
@@ -75,7 +75,7 @@ public class EmailNotificationService {
     public void notifyUserApproved(String toEmail, String userName, String submissionTitle, Long listingId) {
         if (!mailEnabled || mailSender == null || toEmail == null || toEmail.isBlank()) {
             log.info("[Notification] Advertisement approved: '{}' for user {} ({}). Listing ID: {}. (Mail sending disabled)",
-                    submissionTitle, userName, toEmail, listingId);
+                    submissionTitle, userName, maskEmail(toEmail), listingId);
             return;
         }
 
@@ -95,9 +95,9 @@ public class EmailNotificationService {
                     userName != null ? userName : "there", submissionTitle, listingId
             ));
             mailSender.send(message);
-            log.info("Successfully sent approval email to submitter {}", toEmail);
+            log.info("Successfully sent approval email to submitter {}", maskEmail(toEmail));
         } catch (Exception e) {
-            log.error("Failed to send approval email to user {}: {}", toEmail, e.getMessage(), e);
+            log.error("Failed to send approval email to user {}: {}", maskEmail(toEmail), e.getMessage(), e);
         }
     }
 
@@ -107,7 +107,7 @@ public class EmailNotificationService {
     public void notifyUserDeclined(String toEmail, String userName, String submissionTitle, String reason) {
         if (!mailEnabled || mailSender == null || toEmail == null || toEmail.isBlank()) {
             log.info("[Notification] Advertisement declined: '{}' for user {} ({}). Reason: {}. (Mail sending disabled)",
-                    submissionTitle, userName, toEmail, reason);
+                    submissionTitle, userName, maskEmail(toEmail), reason);
             return;
         }
 
@@ -128,10 +128,27 @@ public class EmailNotificationService {
                     userName != null ? userName : "there", submissionTitle, reason
             ));
             mailSender.send(message);
-            log.info("Successfully sent decline email to submitter {}", toEmail);
+            log.info("Successfully sent decline email to submitter {}", maskEmail(toEmail));
         } catch (Exception e) {
-            log.error("Failed to send decline email to user {}: {}", toEmail, e.getMessage(), e);
+            log.error("Failed to send decline email to user {}: {}", maskEmail(toEmail), e.getMessage(), e);
         }
+    }
+
+    private String maskEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return "unknown";
+        }
+        String trimmed = email.trim();
+        int atIndex = trimmed.indexOf('@');
+        if (atIndex <= 1) {
+            return "***" + trimmed.substring(Math.max(0, atIndex));
+        }
+        String local = trimmed.substring(0, atIndex);
+        String domain = trimmed.substring(atIndex);
+        if (local.length() <= 2) {
+            return local.charAt(0) + "***" + domain;
+        }
+        return local.charAt(0) + "***" + local.charAt(local.length() - 1) + domain;
     }
 
     private String sanitizeHeader(String header) {

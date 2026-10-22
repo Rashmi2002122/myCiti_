@@ -146,12 +146,24 @@ public class AuthService {
             throw new BadCredentialsException("Refresh token is required");
         }
 
-        String tokenHash = hashToken(rawRefreshToken);
+        String tokenHash = hashToken(rawRefreshToken.trim());
         RefreshToken storedToken = refreshTokenRepository.findByTokenHash(tokenHash)
             .orElseThrow(() -> new BadCredentialsException("Invalid or revoked refresh token"));
 
-        if (!storedToken.isValid()) {
-            throw new BadCredentialsException("Refresh token is expired or revoked");
+        if (storedToken.isRevoked()) {
+            User user = storedToken.getUser();
+            Long userId = user != null ? user.getId() : null;
+            String userEmail = user != null ? user.getEmail() : "unknown";
+            log.error("[SECURITY ALERT] Refresh token reuse detected for user id #{} ({})! Possible token theft. Revoking all active sessions.",
+                userId, userEmail);
+            if (userId != null) {
+                refreshTokenRepository.revokeAllForUser(userId, Instant.now());
+            }
+            throw new BadCredentialsException("Refresh token reuse detected. All sessions terminated for security.");
+        }
+
+        if (storedToken.isExpired()) {
+            throw new BadCredentialsException("Refresh token is expired");
         }
 
         User user = storedToken.getUser();

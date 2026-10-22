@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.Set;
 
 @Component
 public class JwtProvider {
@@ -20,34 +21,37 @@ public class JwtProvider {
     private final SecretKey key;
     private final long accessTtlMinutes;
 
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JwtProvider.class);
-    private static final String DEFAULT_SECRET = "insecure_default_secret_placeholder_must_change_32chars";
+    private static final Set<String> FORBIDDEN_SECRETS = Set.of(
+        "insecure_default_secret_placeholder_must_change_32chars",
+        "replace_with_at_least_32_random_bytes_for_jwt_signing",
+        "your-jwt-secret-here-must-be-very-long-32-chars",
+        "01234567890123456789012345678901",
+        "12345678901234567890123456789012",
+        "secretsecretsecretsecretsecret32c"
+    );
 
     @Autowired
     public JwtProvider(
-        @Value("${app.jwt.secret:" + DEFAULT_SECRET + "}") String secret,
-        @Value("${app.jwt.access-ttl-minutes:15}") long accessTtlMinutes,
-        @Value("${spring.profiles.active:default}") String activeProfile
+        @Value("${app.jwt.secret:}") String secret,
+        @Value("${app.jwt.access-ttl-minutes:15}") long accessTtlMinutes
     ) {
         if (secret == null || secret.isBlank()) {
-            secret = DEFAULT_SECRET;
+            throw new IllegalStateException("JWT_SECRET is not configured. Set the 'JWT_SECRET' environment variable with at least 32 characters.");
         }
-        if (secret.length() < 32) {
-            throw new IllegalArgumentException("JWT_SECRET must be at least 32 characters long");
+        String trimmed = secret.trim();
+        if (trimmed.length() < 32) {
+            throw new IllegalStateException("JWT_SECRET must be at least 32 characters long (currently " + trimmed.length() + " chars).");
+        }
+        if (FORBIDDEN_SECRETS.contains(trimmed)) {
+            throw new IllegalStateException("JWT_SECRET matches a known insecure default value. You must set a strong, random secret.");
         }
 
-        if (DEFAULT_SECRET.equals(secret)) {
-            log.warn("********************************************************************************");
-            log.warn("[SECURITY WARNING] Application is using the default development JWT secret!");
-            log.warn("To secure your deployment, add 'JWT_SECRET' to your Render Environment Variables.");
-            log.warn("********************************************************************************");
-        }
-        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.key = Keys.hmacShaKeyFor(trimmed.getBytes(StandardCharsets.UTF_8));
         this.accessTtlMinutes = accessTtlMinutes;
     }
 
-    public JwtProvider(String secret, long accessTtlMinutes) {
-        this(secret, accessTtlMinutes, "default");
+    public JwtProvider(String secret, long accessTtlMinutes, String activeProfile) {
+        this(secret, accessTtlMinutes);
     }
 
     public String generateToken(Long userId, String email, Role role, boolean profileComplete) {

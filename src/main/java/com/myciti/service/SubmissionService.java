@@ -212,6 +212,19 @@ public class SubmissionService {
             throw new IllegalArgumentException("Approved advertisements cannot be deleted directly. Use Unpublish instead.");
         }
 
+        // Delete associated uploaded images from storage to prevent orphaned assets
+        if (submission.getImages() != null) {
+            for (SubmissionImage img : submission.getImages()) {
+                if (img.getUrl() != null && !img.getUrl().isBlank()) {
+                    try {
+                        storageService.deleteImage(img.getUrl());
+                    } catch (Exception e) {
+                        log.warn("[SubmissionService] Failed to delete image asset '{}': {}", img.getUrl(), e.getMessage());
+                    }
+                }
+            }
+        }
+
         submissionRepository.delete(submission);
     }
 

@@ -73,6 +73,20 @@ public class RateLimitingService {
     }
 
     /**
+     * Rate limit for image uploads: 15 requests per minute.
+     */
+    public boolean tryConsumeImageUpload(String ip) {
+        return tryConsumeKey("upload:" + normalizeIp(ip), 15, Duration.ofMinutes(1));
+    }
+
+    /**
+     * Rate limit for public listings search: 60 requests per minute.
+     */
+    public boolean tryConsumeSearch(String ip) {
+        return tryConsumeKey("search:" + normalizeIp(ip), 60, Duration.ofMinutes(1));
+    }
+
+    /**
      * General consume method (defaults to auth rate limit).
      */
     public boolean tryConsume(String ip) {
