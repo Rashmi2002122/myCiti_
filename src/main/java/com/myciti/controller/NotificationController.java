@@ -39,9 +39,11 @@ public class NotificationController {
 
     @DeleteMapping("/unsubscribe")
     public ResponseEntity<Map<String, String>> unsubscribe(
+        @AuthenticationPrincipal User user,
         @RequestParam String endpoint
     ) {
-        notificationService.removePushSubscription(endpoint);
+        if (user == null) return ResponseEntity.status(401).build();
+        notificationService.removePushSubscription(user.getId(), endpoint);
         return ResponseEntity.ok(Map.of("message", "Unsubscribed successfully"));
     }
 

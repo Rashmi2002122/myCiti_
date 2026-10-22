@@ -19,7 +19,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -44,6 +46,7 @@ public class NotificationService {
     private final PushSubscriptionRepository pushSubscriptionRepository;
     private final InAppNotificationRepository inAppNotificationRepository;
     private final UserRepository userRepository;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${app.webpush.public-key:}")
     private String vapidPublicKey;
@@ -59,11 +62,21 @@ public class NotificationService {
     public NotificationService(
         PushSubscriptionRepository pushSubscriptionRepository,
         InAppNotificationRepository inAppNotificationRepository,
-        UserRepository userRepository
+        UserRepository userRepository,
+        PlatformTransactionManager transactionManager
     ) {
         this.pushSubscriptionRepository = pushSubscriptionRepository;
         this.inAppNotificationRepository = inAppNotificationRepository;
         this.userRepository = userRepository;
+        this.transactionTemplate = transactionManager != null ? new TransactionTemplate(transactionManager) : null;
+    }
+
+    public NotificationService(
+        PushSubscriptionRepository pushSubscriptionRepository,
+        InAppNotificationRepository inAppNotificationRepository,
+        UserRepository userRepository
+    ) {
+        this(pushSubscriptionRepository, inAppNotificationRepository, userRepository, null);
     }
 
     @PostConstruct
@@ -158,7 +171,17 @@ public class NotificationService {
     }
 
     /**
-     * Delete a push subscription by endpoint.
+     * Delete a push subscription owned by authenticated user.
+     */
+    @Transactional
+    public void removePushSubscription(Long userId, String endpoint) {
+        if (endpoint != null && !endpoint.isBlank() && userId != null) {
+            pushSubscriptionRepository.deleteByEndpointAndUser_Id(endpoint, userId);
+        }
+    }
+
+    /**
+     * Delete a push subscription by endpoint (fallback).
      */
     @Transactional
     public void removePushSubscription(String endpoint) {
@@ -290,7 +313,13 @@ public class NotificationService {
                         log.info("[WebPush] Successfully delivered push to user #{}, HTTP {}", userId, statusCode);
                     } else if (statusCode == 404 || statusCode == 410) {
                         log.warn("[WebPush] Push endpoint expired (HTTP {}), removing endpoint for user #{}: {}", statusCode, userId, sub.getEndpoint());
-                        pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
+                        if (transactionTemplate != null) {
+                            transactionTemplate.executeWithoutResult(status -> {
+                                pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
+                            });
+                        } else {
+                            pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
+                        }
                     } else {
                         log.warn("[WebPush] Push service rejected delivery for user #{} with HTTP {}: {} | Endpoint: {}",
                             userId, statusCode, responseBody, sub.getEndpoint());

@@ -24,11 +24,26 @@ public class JwtProvider {
 
     public JwtProvider(
         @Value("${app.jwt.secret:" + DEFAULT_SECRET + "}") String secret,
-        @Value("${app.jwt.access-ttl-minutes:15}") long accessTtlMinutes
+        @Value("${app.jwt.access-ttl-minutes:15}") long accessTtlMinutes,
+        @Value("${spring.profiles.active:default}") String activeProfile
     ) {
-        if (secret == null || secret.length() < 32) {
+        if (secret == null || secret.isBlank()) {
+            secret = DEFAULT_SECRET;
+        }
+        if (secret.length() < 32) {
             throw new IllegalArgumentException("JWT_SECRET must be at least 32 characters long");
         }
+
+        boolean isProduction = "prod".equalsIgnoreCase(activeProfile)
+            || "production".equalsIgnoreCase(activeProfile)
+            || "true".equalsIgnoreCase(System.getenv("RENDER"))
+            || "production".equalsIgnoreCase(System.getenv("NODE_ENV"))
+            || "production".equalsIgnoreCase(System.getenv("APP_ENV"));
+
+        if (isProduction && DEFAULT_SECRET.equals(secret)) {
+            throw new IllegalStateException("[CRITICAL SECURITY ERROR] Production deployment cannot use the default development JWT secret! Please set a strong JWT_SECRET environment variable.");
+        }
+
         if (DEFAULT_SECRET.equals(secret)) {
             log.warn("********************************************************************************");
             log.warn("[SECURITY WARNING] Application is using the default development JWT secret!");
@@ -37,6 +52,10 @@ public class JwtProvider {
         }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.accessTtlMinutes = accessTtlMinutes;
+    }
+
+    public JwtProvider(String secret, long accessTtlMinutes) {
+        this(secret, accessTtlMinutes, "default");
     }
 
     public String generateToken(Long userId, String email, Role role, boolean profileComplete) {
@@ -54,21 +73,35 @@ public class JwtProvider {
             .compact();
     }
 
+    /**
+     * Parses and cryptographically validates the token in a single pass.
+     * Returns the Claims payload if signature and expiry are valid, or null otherwise.
+     */
+    public Claims parseAndValidateClaims(String token) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        try {
+            return Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
     public Claims getClaims(String token) {
-        return Jwts.parser()
-            .verifyWith(key)
-            .build()
-            .parseSignedClaims(token)
-            .getPayload();
+        Claims claims = parseAndValidateClaims(token);
+        if (claims == null) {
+            throw new IllegalArgumentException("Invalid or expired JWT token");
+        }
+        return claims;
     }
 
     public boolean validateToken(String token) {
-        try {
-            Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
-            return true;
-        } catch (Exception ex) {
-            return false;
-        }
+        return parseAndValidateClaims(token) != null;
     }
 
     public Long getUserId(String token) {

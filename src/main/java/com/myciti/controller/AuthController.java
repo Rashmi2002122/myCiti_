@@ -48,8 +48,8 @@ public class AuthController {
     ) {
         AuthService.AuthResult result = authService.loginWithGoogle(request.getIdToken());
         setRefreshTokenCookie(response, result.rawRefreshToken());
-        // Return both accessToken and refreshToken to support cross-domain SPAs where 3rd-party cookies might be blocked
-        return ResponseEntity.ok(new AuthResponse(result.accessToken(), result.rawRefreshToken(), result.user()));
+        // Return accessToken and user details; refreshToken is strictly isolated in the HttpOnly cookie
+        return ResponseEntity.ok(new AuthResponse(result.accessToken(), result.user()));
     }
 
     /**
@@ -72,7 +72,7 @@ public class AuthController {
         String token = resolveRefreshToken(request, cookieRefreshToken, headerRefreshToken, bodyRequest);
         AuthService.AuthResult result = authService.refreshSession(token);
         setRefreshTokenCookie(response, result.rawRefreshToken());
-        return ResponseEntity.ok(new AuthResponse(result.accessToken(), result.rawRefreshToken(), result.user()));
+        return ResponseEntity.ok(new AuthResponse(result.accessToken(), result.user()));
     }
 
     /**

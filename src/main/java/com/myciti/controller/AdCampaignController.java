@@ -156,6 +156,9 @@ public class AdCampaignController {
         @PathVariable Long id
     ) {
         if (user == null) return ResponseEntity.status(401).build();
+        if (user.getRole() != Role.CLIENT && user.getRole() != Role.ADMIN) {
+            throw new AccessDeniedException("Only CLIENT and ADMIN accounts can delete ad campaigns");
+        }
         adCampaignService.deleteCampaign(user.getId(), id);
         return ResponseEntity.noContent().build();
     }

@@ -1,13 +1,16 @@
 package com.myciti.security;
 
+import com.myciti.event.UserStatusChangedEvent;
 import com.myciti.model.Role;
 import com.myciti.model.User;
 import com.myciti.model.UserStatus;
 import com.myciti.repository.UserRepository;
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.context.event.EventListener;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -56,6 +59,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 
+    @EventListener
+    public void onUserStatusChanged(UserStatusChangedEvent event) {
+        if (event != null && event.userId() != null) {
+            evictUser(event.userId());
+            log.debug("[JwtAuthenticationFilter] Evicted user #{} from security cache on status change", event.userId());
+        }
+    }
+
     @Override
     protected void doFilterInternal(
         HttpServletRequest request,
@@ -64,11 +75,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         String token = resolveToken(request);
 
-        if (StringUtils.hasText(token) && jwtProvider.validateToken(token)) {
-            try {
-                Long userId = jwtProvider.getUserId(token);
+        if (StringUtils.hasText(token)) {
+            Claims claims = jwtProvider.parseAndValidateClaims(token);
+            if (claims != null) {
+                try {
+                    Long userId = Long.parseLong(claims.getSubject());
 
-                if (userId != null) {
+                    if (userId != null) {
                     User user = null;
                     CachedUser cached = userCache.get(userId);
                     if (cached != null && !cached.isExpired()) {
@@ -103,9 +116,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 log.debug("[JwtAuthenticationFilter] Error parsing JWT or loading user context: {}", ex.getMessage());
             }
         }
-
-        filterChain.doFilter(request, response);
     }
+
+    filterChain.doFilter(request, response);
+}
 
     private String resolveToken(HttpServletRequest request) {
         String bearer = request.getHeader("Authorization");
