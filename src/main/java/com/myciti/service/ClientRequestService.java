@@ -9,6 +9,7 @@ import com.myciti.model.*;
 import com.myciti.repository.AuditLogRepository;
 import com.myciti.repository.ClientRequestRepository;
 import com.myciti.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -36,6 +37,7 @@ public class ClientRequestService {
         this(clientRequestRepository, userRepository, auditLogRepository, clientProfileService, null);
     }
 
+    @Autowired
     public ClientRequestService(
         ClientRequestRepository clientRequestRepository,
         UserRepository userRepository,
