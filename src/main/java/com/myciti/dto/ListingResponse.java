@@ -35,6 +35,8 @@ public class ListingResponse {
     private String clientLogoUrl;
     private Boolean clientVerified;
     private String clientType;
+    private Boolean hasOtherUpdates;
+    private Integer otherUpdatesCount;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -263,5 +265,21 @@ public class ListingResponse {
 
     public void setClientType(String clientType) {
         this.clientType = clientType;
+    }
+
+    public Boolean getHasOtherUpdates() {
+        return hasOtherUpdates;
+    }
+
+    public void setHasOtherUpdates(Boolean hasOtherUpdates) {
+        this.hasOtherUpdates = hasOtherUpdates;
+    }
+
+    public Integer getOtherUpdatesCount() {
+        return otherUpdatesCount;
+    }
+
+    public void setOtherUpdatesCount(Integer otherUpdatesCount) {
+        this.otherUpdatesCount = otherUpdatesCount;
     }
 }

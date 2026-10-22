@@ -27,6 +27,8 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -120,7 +122,7 @@ public class ListingService {
             // Batch enrich client business profile metadata
             enrichClientProfilesBatch(responses);
 
-            return responses;
+            return deduplicateClientListings(responses);
         } else {
             List<Listing> listings = listingRepository.findActiveWithoutDistance(today, categoryStr, cityStr, trimmedQ);
             if (listings.isEmpty()) {
@@ -144,7 +146,7 @@ public class ListingService {
             // Batch enrich client business profile metadata
             enrichClientProfilesBatch(responses);
 
-            return responses;
+            return deduplicateClientListings(responses);
         }
     }
 
@@ -184,6 +186,74 @@ public class ListingService {
         else {
             return true;
         }
+    }
+
+    /**
+     * Deduplicate listings by clientProfileId so that a client with multiple posts
+     * only displays their most recent post on the map and explore feeds.
+     * Standalone listings (null clientProfileId) are preserved.
+     * The retained recent post is tagged with hasOtherUpdates and otherUpdatesCount.
+     */
+    private List<ListingResponse> deduplicateClientListings(List<ListingResponse> responses) {
+        if (responses == null || responses.isEmpty()) {
+            return responses;
+        }
+
+        Map<Long, List<ListingResponse>> clientGroups = new HashMap<>();
+        for (ListingResponse resp : responses) {
+            if (resp.getClientProfileId() != null) {
+                clientGroups.computeIfAbsent(resp.getClientProfileId(), k -> new ArrayList<>()).add(resp);
+            }
+        }
+
+        Set<Long> olderListingIdsToExclude = new HashSet<>();
+        for (Map.Entry<Long, List<ListingResponse>> entry : clientGroups.entrySet()) {
+            List<ListingResponse> group = entry.getValue();
+            if (group.size() > 1) {
+                // Determine the most recent listing by createdAt desc, fallback to id desc
+                ListingResponse newest = group.get(0);
+                for (int i = 1; i < group.size(); i++) {
+                    ListingResponse candidate = group.get(i);
+                    if (isNewer(candidate, newest)) {
+                        newest = candidate;
+                    }
+                }
+                newest.setHasOtherUpdates(true);
+                newest.setOtherUpdatesCount(group.size() - 1);
+
+                for (ListingResponse item : group) {
+                    if (!Objects.equals(item.getId(), newest.getId())) {
+                        olderListingIdsToExclude.add(item.getId());
+                    }
+                }
+            }
+        }
+
+        if (olderListingIdsToExclude.isEmpty()) {
+            return responses;
+        }
+
+        List<ListingResponse> result = new ArrayList<>(responses.size());
+        for (ListingResponse resp : responses) {
+            if (!olderListingIdsToExclude.contains(resp.getId())) {
+                result.add(resp);
+            }
+        }
+        return result;
+    }
+
+    private boolean isNewer(ListingResponse candidate, ListingResponse current) {
+        if (candidate.getCreatedAt() != null && current.getCreatedAt() != null) {
+            if (candidate.getCreatedAt().isAfter(current.getCreatedAt())) {
+                return true;
+            }
+            if (current.getCreatedAt().isAfter(candidate.getCreatedAt())) {
+                return false;
+            }
+        }
+        long candId = candidate.getId() != null ? candidate.getId() : 0L;
+        long currId = current.getId() != null ? current.getId() : 0L;
+        return candId > currId;
     }
 
     private void setImagesOnResponse(ListingResponse response, List<ListingImage> images) {
