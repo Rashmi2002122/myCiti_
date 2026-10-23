@@ -64,6 +64,15 @@ class RateLimitingServiceTest {
     }
 
     @Test
+    void tryConsumeAdReport_enforcesFivePerHourLimit() {
+        String ip = "192.168.1.170";
+        for (int i = 0; i < 5; i++) {
+            assertTrue(rateLimitingService.tryConsumeAdReport(ip), "Report " + (i + 1) + " should succeed");
+        }
+        assertFalse(rateLimitingService.tryConsumeAdReport(ip), "6th report should be rate-limited");
+    }
+
+    @Test
     void evictExpired_keepsMapBounded() {
         rateLimitingService.tryConsume("1.1.1.1");
         rateLimitingService.tryConsume("2.2.2.2");

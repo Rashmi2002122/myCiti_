@@ -101,7 +101,7 @@ public class AdCampaignServiceTest {
         otherSubmission.setUser(otherUser);
         otherSubmission.setListingId(100L);
 
-        when(submissionRepository.findByListingId(100L)).thenReturn(Optional.of(otherSubmission));
+        when(submissionRepository.findFirstByListingIdOrderByCreatedAtDesc(100L)).thenReturn(Optional.of(otherSubmission));
 
         AdCampaignRequest req = new AdCampaignRequest();
         req.setListingId(100L);
@@ -118,7 +118,7 @@ public class AdCampaignServiceTest {
     void createCampaign_clientOwner_createsPendingCampaign() {
         when(userRepository.findById(10L)).thenReturn(Optional.of(clientUser));
         when(listingRepository.findById(100L)).thenReturn(Optional.of(publishedListing));
-        when(submissionRepository.findByListingId(100L)).thenReturn(Optional.of(userSubmission));
+        when(submissionRepository.findFirstByListingIdOrderByCreatedAtDesc(100L)).thenReturn(Optional.of(userSubmission));
         when(adCampaignRepository.save(any(AdCampaign.class))).thenAnswer(inv -> {
             AdCampaign c = inv.getArgument(0);
             c.setId(1L);
@@ -163,7 +163,7 @@ public class AdCampaignServiceTest {
     void createCampaign_whenTitleNotProvided_defaultsToHeadline() {
         when(userRepository.findById(10L)).thenReturn(Optional.of(clientUser));
         when(listingRepository.findById(100L)).thenReturn(Optional.of(publishedListing));
-        when(submissionRepository.findByListingId(100L)).thenReturn(Optional.of(userSubmission));
+        when(submissionRepository.findFirstByListingIdOrderByCreatedAtDesc(100L)).thenReturn(Optional.of(userSubmission));
         when(adCampaignRepository.save(any(AdCampaign.class))).thenAnswer(inv -> {
             AdCampaign c = inv.getArgument(0);
             c.setId(2L);

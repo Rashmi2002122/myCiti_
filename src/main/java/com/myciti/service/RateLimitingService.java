@@ -80,6 +80,13 @@ public class RateLimitingService {
     }
 
     /**
+     * Rate limit for ad report submissions: 5 requests per hour.
+     */
+    public boolean tryConsumeAdReport(String ip) {
+        return tryConsumeKey("report:" + normalizeIp(ip), 5, Duration.ofHours(1));
+    }
+
+    /**
      * Rate limit for public listings search: 60 requests per minute.
      */
     public boolean tryConsumeSearch(String ip) {
