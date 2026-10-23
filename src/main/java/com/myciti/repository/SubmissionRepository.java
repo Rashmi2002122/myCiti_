@@ -22,6 +22,8 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 
     Optional<Submission> findByListingId(Long listingId);
 
+    Optional<Submission> findFirstByListingIdOrderByCreatedAtDesc(Long listingId);
+
     long countByUserIdAndStatus(Long userId, SubmissionStatus status);
 
     @Query("SELECT COUNT(s) FROM Submission s WHERE s.user.id = :userId AND s.createdAt >= :after")

@@ -78,7 +78,7 @@ public class AnnouncementService {
                 .orElseThrow(() -> new ResourceNotFoundException("Listing not found with ID: " + req.getListingId()));
 
             if (user.getRole() == Role.CLIENT) {
-                Submission sub = submissionRepository.findByListingId(listing.getId())
+                Submission sub = submissionRepository.findFirstByListingIdOrderByCreatedAtDesc(listing.getId())
                     .orElseThrow(() -> new AccessDeniedException("You do not own this listing"));
                 if (!sub.getUser().getId().equals(userId)) {
                     throw new AccessDeniedException("You can only announce for your own approved listings");

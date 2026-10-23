@@ -45,6 +45,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 sendRateLimitResponse(response, path, "Rate limit exceeded for ad interaction tracking (max 60 per minute)");
                 return;
             }
+        } else if ("POST".equalsIgnoreCase(method) && path.startsWith("/api/ads/campaigns/") && path.endsWith("/report")) {
+            String clientIp = getClientIp(request);
+            if (!rateLimitingService.tryConsumeAdReport(clientIp)) {
+                sendRateLimitResponse(response, path, "Rate limit exceeded for ad report submissions (max 5 per hour)");
+                return;
+            }
         } else if ("POST".equalsIgnoreCase(method) && (path.endsWith("/images") || path.endsWith("/logo") || path.endsWith("/cover"))) {
             String clientIp = getClientIp(request);
             if (!rateLimitingService.tryConsumeImageUpload(clientIp)) {
@@ -75,14 +81,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private String getClientIp(HttpServletRequest request) {
-        String cfIp = request.getHeader("CF-Connecting-IP");
-        if (cfIp != null && !cfIp.isBlank()) {
-            return cfIp.trim();
-        }
-
         String remoteAddr = request.getRemoteAddr();
-        // Only trust X-Forwarded-For if request is coming from localhost/reverse proxy
+
+        // Only trust proxy headers (CF-Connecting-IP, X-Forwarded-For) if request arrives
+        // via localhost or a trusted reverse-proxy / private network.
         if (isLocalOrProxy(remoteAddr)) {
+            String cfIp = request.getHeader("CF-Connecting-IP");
+            if (cfIp != null && !cfIp.isBlank()) {
+                return cfIp.trim();
+            }
+
             String xf = request.getHeader("X-Forwarded-For");
             if (xf != null && !xf.isBlank()) {
                 String[] parts = xf.split(",");
@@ -96,6 +104,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 return parts[0].trim();
             }
         }
+
         return (remoteAddr != null && !remoteAddr.isBlank()) ? remoteAddr : "unknown";
     }
 

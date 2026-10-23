@@ -143,6 +143,23 @@ public class ListingServiceTest {
     }
 
     @Test
+    @DisplayName("getListingById: draft listing requested by anonymous user throws ResourceNotFoundException")
+    void testGetListingById_DraftListing_Anonymous_ThrowsNotFound() {
+        Listing listing = new Listing();
+        listing.setId(99L);
+        listing.setTitle("Secret Draft Listing");
+        listing.setStatus(Status.DRAFT);
+
+        when(listingRepository.findByIdWithImages(99L)).thenReturn(Optional.of(listing));
+
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+
+        assertThrows(com.myciti.exception.ResourceNotFoundException.class, () ->
+            listingService.getListingById(99L)
+        );
+    }
+
+    @Test
     @DisplayName("toResponse: enriches response when called for saved listings")
     void testToResponse_EnrichesClientProfile() {
         Listing listing = new Listing();

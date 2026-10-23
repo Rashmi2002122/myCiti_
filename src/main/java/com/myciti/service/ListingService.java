@@ -152,18 +152,47 @@ public class ListingService {
 
     /**
      * Get single listing detail by ID.
+     * Non-PUBLISHED listings are restricted to the owner client or an ADMIN.
      */
-    @Cacheable(value = "listingById", key = "#id")
+    @Cacheable(value = "listingById", key = "#id", unless = "#result == null || #result.status != T(com.myciti.model.Status).PUBLISHED")
     @Transactional(readOnly = true)
     public ListingResponse getListingById(Long id) {
         Listing listing = listingRepository.findByIdWithImages(id)
             .orElseThrow(() -> new ResourceNotFoundException("Listing with id " + id + " not found"));
+
+        if (listing.getStatus() != com.myciti.model.Status.PUBLISHED) {
+            if (!canViewUnpublishedListing(listing)) {
+                throw new ResourceNotFoundException("Listing with id " + id + " not found");
+            }
+        }
 
         ZonedDateTime nowInKolkata = ZonedDateTime.now(kolkataZone);
         ListingResponse response = mapEntityToResponse(listing, nowInKolkata.toLocalTime(), null);
         setImagesOnResponse(response, listing.getImages());
         enrichClientProfile(response, listing.getClientProfileId());
         return response;
+    }
+
+    private boolean canViewUnpublishedListing(Listing listing) {
+        try {
+            org.springframework.security.core.Authentication auth =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()) {
+                return false;
+            }
+            if (auth.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()))) {
+                return true;
+            }
+            if (auth.getPrincipal() instanceof com.myciti.model.User currentUser) {
+                if (listing.getClientProfileId() != null && clientProfileRepository != null) {
+                    return clientProfileRepository.findById(listing.getClientProfileId())
+                        .map(cp -> cp.getUser() != null && cp.getUser().getId().equals(currentUser.getId()))
+                        .orElse(false);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
     }
 
     /**
