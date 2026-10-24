@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -541,5 +542,15 @@ public class ListingService {
         setImagesOnResponse(res, listing.getImages());
         enrichClientProfile(res, listing.getClientProfileId());
         return res;
+    }
+
+    /**
+     * Periodically evict public listings cache every 15 minutes to keep openNow statuses
+     * and day boundary transitions fresh across the day.
+     */
+    @Scheduled(fixedRate = 900000)
+    @CacheEvict(value = "listings", allEntries = true)
+    public void evictListingsCachePeriodically() {
+        // Evicts cached public search results so real-time openNow stays accurate
     }
 }
