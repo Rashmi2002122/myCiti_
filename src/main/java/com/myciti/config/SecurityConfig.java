@@ -4,6 +4,7 @@ import com.myciti.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -48,8 +49,9 @@ public class SecurityConfig {
                 // Public endpoints
                 .requestMatchers("/", "/health").permitAll()
                 .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/clients/**").permitAll()
-                .requestMatchers("/api/listings/**").permitAll()
+                // Narrow to GET-only to prevent accidental public exposure of future mutating endpoints
+                .requestMatchers(HttpMethod.GET, "/api/clients/{slug}", "/api/clients/{slug}/listings").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/listings/**").permitAll()
                 .requestMatchers("/api/ads/active").permitAll()
                 .requestMatchers("/api/ads/campaigns/*/impressions", "/api/ads/campaigns/*/click").permitAll()
                 .requestMatchers("/api/notifications/vapid-public-key").permitAll()
