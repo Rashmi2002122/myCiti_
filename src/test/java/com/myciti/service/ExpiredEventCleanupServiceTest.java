@@ -5,7 +5,9 @@ import com.myciti.model.Listing;
 import com.myciti.model.ListingImage;
 import com.myciti.model.Submission;
 import com.myciti.model.SubmissionImage;
+import com.myciti.repository.InAppNotificationRepository;
 import com.myciti.repository.ListingRepository;
+import com.myciti.repository.RefreshTokenRepository;
 import com.myciti.repository.SubmissionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -31,6 +34,12 @@ public class ExpiredEventCleanupServiceTest {
     @Mock
     private StorageService storageService;
 
+    @Mock
+    private InAppNotificationRepository inAppNotificationRepository;
+
+    @Mock
+    private RefreshTokenRepository refreshTokenRepository;
+
     private ExpiredEventCleanupService cleanupService;
 
     @BeforeEach
@@ -39,6 +48,8 @@ public class ExpiredEventCleanupServiceTest {
                 listingRepository,
                 submissionRepository,
                 storageService,
+                inAppNotificationRepository,
+                refreshTokenRepository,
                 "Asia/Kolkata"
         );
     }
@@ -83,5 +94,16 @@ public class ExpiredEventCleanupServiceTest {
         verify(listingRepository, never()).delete(any());
         verify(submissionRepository, never()).delete(any());
         verify(storageService, never()).deleteImage(any());
+    }
+
+    @Test
+    void testCleanupOldNotificationsAndTokens_InvokesPruneQueries() {
+        when(inAppNotificationRepository.deleteByCreatedAtBefore(any(Instant.class))).thenReturn(5);
+        when(refreshTokenRepository.deleteAllRevokedAndExpired(any(Instant.class))).thenReturn(3);
+
+        cleanupService.cleanupOldNotificationsAndTokens();
+
+        verify(inAppNotificationRepository, times(1)).deleteByCreatedAtBefore(any(Instant.class));
+        verify(refreshTokenRepository, times(1)).deleteAllRevokedAndExpired(any(Instant.class));
     }
 }

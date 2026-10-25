@@ -261,18 +261,20 @@ public class NotificationService {
             return 0;
         }
 
-        int deliveredCount = 0;
+        List<InAppNotification> batch = new java.util.ArrayList<>(recipients.size());
         for (User recipient : recipients) {
-            // 1. Create In-App Notification (guaranteed delivered)
-            InAppNotification notif = new InAppNotification(recipient, announcement, title, message, linkUrl);
-            inAppNotificationRepository.save(notif);
-            deliveredCount++;
+            // 1. Prepare In-App Notification (guaranteed delivered)
+            batch.add(new InAppNotification(recipient, announcement, title, message, linkUrl));
 
             // 2. Dispatch Web Push asynchronously to user's registered devices
             sendWebPushToUserDevices(recipient.getId(), title, message, linkUrl);
         }
 
-        return deliveredCount;
+        if (!batch.isEmpty()) {
+            inAppNotificationRepository.saveAll(batch);
+        }
+
+        return batch.size();
     }
 
     private void sendWebPushToUserDevices(Long userId, String title, String message, String linkUrl) {

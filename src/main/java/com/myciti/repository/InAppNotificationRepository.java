@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,4 +27,8 @@ public interface InAppNotificationRepository extends JpaRepository<InAppNotifica
     void deleteByUser_Id(Long userId);
 
     void deleteByIdAndUser_Id(Long id, Long userId);
+
+    @Modifying
+    @Query("DELETE FROM InAppNotification n WHERE n.createdAt < :cutoff")
+    int deleteByCreatedAtBefore(@Param("cutoff") Instant cutoff);
 }

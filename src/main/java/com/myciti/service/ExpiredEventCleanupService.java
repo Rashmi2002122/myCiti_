@@ -4,15 +4,20 @@ import com.myciti.model.Listing;
 import com.myciti.model.ListingImage;
 import com.myciti.model.Submission;
 import com.myciti.model.SubmissionImage;
+import com.myciti.repository.InAppNotificationRepository;
 import com.myciti.repository.ListingRepository;
+import com.myciti.repository.RefreshTokenRepository;
 import com.myciti.repository.SubmissionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -28,16 +33,30 @@ public class ExpiredEventCleanupService {
     private final ListingRepository listingRepository;
     private final SubmissionRepository submissionRepository;
     private final StorageService storageService;
+    private final InAppNotificationRepository inAppNotificationRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final ZoneId kolkataZone;
+
+    @Autowired
+    public ExpiredEventCleanupService(ListingRepository listingRepository,
+                                      SubmissionRepository submissionRepository,
+                                      StorageService storageService,
+                                      InAppNotificationRepository inAppNotificationRepository,
+                                      RefreshTokenRepository refreshTokenRepository,
+                                      @Value("${app.timezone:Asia/Kolkata}") String timeZone) {
+        this.listingRepository = listingRepository;
+        this.submissionRepository = submissionRepository;
+        this.storageService = storageService;
+        this.inAppNotificationRepository = inAppNotificationRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
+        this.kolkataZone = ZoneId.of(timeZone);
+    }
 
     public ExpiredEventCleanupService(ListingRepository listingRepository,
                                       SubmissionRepository submissionRepository,
                                       StorageService storageService,
                                       @Value("${app.timezone:Asia/Kolkata}") String timeZone) {
-        this.listingRepository = listingRepository;
-        this.submissionRepository = submissionRepository;
-        this.storageService = storageService;
-        this.kolkataZone = ZoneId.of(timeZone);
+        this(listingRepository, submissionRepository, storageService, null, null, timeZone);
     }
 
     /**
@@ -108,6 +127,32 @@ public class ExpiredEventCleanupService {
 
         } catch (Exception e) {
             log.error("[Cleanup] Error during automated expired event cleanup: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Runs every day at 03:00 AM Kolkata time to purge old in-app notifications (> 30 days)
+     * and expired/revoked refresh tokens to prevent unbounded table growth under high user activity.
+     */
+    @Scheduled(cron = "0 0 3 * * ?", zone = "Asia/Kolkata")
+    @Transactional
+    public void cleanupOldNotificationsAndTokens() {
+        if (inAppNotificationRepository == null || refreshTokenRepository == null) {
+            return;
+        }
+        try {
+            Instant cutoff = Instant.now().minus(Duration.ofDays(30));
+            int deletedNotifications = inAppNotificationRepository.deleteByCreatedAtBefore(cutoff);
+            int deletedTokens = refreshTokenRepository.deleteAllRevokedAndExpired(Instant.now());
+
+            if (deletedNotifications > 0 || deletedTokens > 0) {
+                log.info("[Cleanup] Cleaned up {} old notifications (>30 days) and {} expired/revoked refresh tokens.",
+                        deletedNotifications, deletedTokens);
+            } else {
+                log.info("[Cleanup] Completed table retention prune: no expired notifications or tokens found.");
+            }
+        } catch (Exception e) {
+            log.error("[Cleanup] Error during automated data retention cleanup: {}", e.getMessage(), e);
         }
     }
 }

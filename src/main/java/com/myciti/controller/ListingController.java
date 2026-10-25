@@ -3,11 +3,13 @@ package com.myciti.controller;
 import com.myciti.dto.ListingResponse;
 import com.myciti.model.Category;
 import com.myciti.service.ListingService;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/listings")
@@ -34,7 +36,9 @@ public class ListingController {
         @RequestParam(required = false) String q
     ) {
         List<ListingResponse> listings = listingService.getListings(category, city, lat, lng, radiusKm, q);
-        return ResponseEntity.ok(listings);
+        return ResponseEntity.ok()
+            .cacheControl(CacheControl.maxAge(60, TimeUnit.SECONDS).cachePublic())
+            .body(listings);
     }
 
     /**
@@ -44,7 +48,9 @@ public class ListingController {
     @GetMapping("/{id}")
     public ResponseEntity<ListingResponse> getListingById(@PathVariable Long id) {
         ListingResponse listing = listingService.getListingById(id);
-        return ResponseEntity.ok(listing);
+        return ResponseEntity.ok()
+            .cacheControl(CacheControl.maxAge(120, TimeUnit.SECONDS).cachePublic())
+            .body(listing);
     }
 
     /**
