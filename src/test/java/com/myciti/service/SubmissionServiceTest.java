@@ -19,6 +19,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -199,6 +200,32 @@ public class SubmissionServiceTest {
     }
 
     @Test
+    void getUserSubmissions_deduplicatesLegacySubmissionsForSameListing() {
+        Submission sub1 = new Submission();
+        sub1.setId(101L);
+        sub1.setUser(testUser);
+        sub1.setListingId(50L);
+        sub1.setStatus(SubmissionStatus.PENDING);
+        sub1.setTitle("Latest revision");
+
+        Submission sub2 = new Submission();
+        sub2.setId(100L);
+        sub2.setUser(testUser);
+        sub2.setListingId(50L);
+        sub2.setStatus(SubmissionStatus.APPROVED);
+        sub2.setTitle("Original post");
+
+        when(submissionRepository.findByUserIdOrderByCreatedAtDesc(1L))
+                .thenReturn(List.of(sub1, sub2));
+
+        List<SubmissionResponse> results = submissionService.getUserSubmissions(1L, null);
+
+        assertEquals(1, results.size());
+        assertEquals(101L, results.get(0).getId());
+        assertEquals("Latest revision", results.get(0).getTitle());
+    }
+
+    @Test
     void getSubmissionById_userCannotReadOtherUserSubmission() {
         Submission sub = new Submission();
         sub.setId(10L);
@@ -261,7 +288,7 @@ public class SubmissionServiceTest {
     }
 
     @Test
-    void updateSubmission_approvedCreatesNewPendingRevision() {
+    void updateSubmission_approvedUpdatesSubmissionInPlaceToPending() {
         Submission sub = new Submission();
         sub.setId(10L);
         sub.setUser(testUser);
@@ -271,18 +298,14 @@ public class SubmissionServiceTest {
 
         when(submissionRepository.findById(10L)).thenReturn(Optional.of(sub));
         when(submissionRepository.countByUserIdAndStatus(1L, SubmissionStatus.PENDING)).thenReturn(0L);
-        when(submissionRepository.save(any(Submission.class))).thenAnswer(inv -> {
-            Submission revision = inv.getArgument(0);
-            revision.setId(200L);
-            return revision;
-        });
+        when(submissionRepository.save(any(Submission.class))).thenAnswer(inv -> inv.getArgument(0));
 
         SubmissionRequest req = createValidRequest();
         req.setTitle("Revision Title");
 
         SubmissionResponse res = submissionService.updateSubmission(10L, 1L, req);
 
-        assertEquals(200L, res.getId());
+        assertEquals(10L, res.getId());
         assertEquals(SubmissionStatus.PENDING, res.getStatus());
         assertEquals(50L, res.getListingId()); // Points to existing listing
         assertEquals("Revision Title", res.getTitle());

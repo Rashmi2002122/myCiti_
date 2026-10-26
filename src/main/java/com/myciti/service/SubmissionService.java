@@ -128,7 +128,22 @@ public class SubmissionService {
         } else {
             list = submissionRepository.findByUserIdOrderByCreatedAtDesc(userId);
         }
-        return list.stream().map(SubmissionResponse::fromEntity).collect(Collectors.toList());
+
+        // Deduplicate any legacy multiple submissions pointing to the same live listing
+        java.util.Map<Long, Submission> uniqueByListing = new java.util.LinkedHashMap<>();
+        java.util.List<Submission> deduplicated = new java.util.ArrayList<>();
+        for (Submission s : list) {
+            if (s.getListingId() != null) {
+                if (!uniqueByListing.containsKey(s.getListingId())) {
+                    uniqueByListing.put(s.getListingId(), s);
+                    deduplicated.add(s);
+                }
+            } else {
+                deduplicated.add(s);
+            }
+        }
+
+        return deduplicated.stream().map(SubmissionResponse::fromEntity).collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -163,31 +178,15 @@ public class SubmissionService {
         validateSubmissionDetails(req);
         String contactPhone = resolveAndValidatePhone(req.getContactPhone(), user.getPhone());
 
-        // Workflow Rule 5: Editing an APPROVED submission creates a new PENDING revision
+        // Workflow Rule 5: Editing an APPROVED submission puts it into PENDING review while preserving live listingId
         if (submission.getStatus() == SubmissionStatus.APPROVED) {
             long pendingCount = submissionRepository.countByUserIdAndStatus(userId, SubmissionStatus.PENDING);
             if (pendingCount >= 3) {
                 throw new IllegalArgumentException("Pending limit reached: maximum 3 advertisements pending review at a time");
             }
-
-            Submission revision = new Submission();
-            revision.setUser(user);
-            revision.setStatus(SubmissionStatus.PENDING);
-            revision.setListingId(submission.getListingId()); // Point to existing live listing for in-place update on approval
-            applySanitizedRequest(revision, req, contactPhone);
-
-            // Clone existing photos so the user doesn't lose photos on revision
-            if (submission.getImages() != null) {
-                for (SubmissionImage origImg : submission.getImages()) {
-                    revision.addImage(new SubmissionImage(revision, origImg.getUrl(), origImg.getSortOrder()));
-                }
-            }
-
-            Submission savedRevision = submissionRepository.save(revision);
-            return SubmissionResponse.fromEntity(savedRevision);
         }
 
-        // Workflow Rule 4: User can edit a PENDING or DECLINED submission; saving DECLINED resets to PENDING & clears reason
+        // Workflow Rule 4: User can edit a PENDING, APPROVED, or DECLINED submission; saving resets to PENDING & clears reason
         applySanitizedRequest(submission, req, contactPhone);
         submission.setStatus(SubmissionStatus.PENDING);
         submission.setDeclineReason(null);
@@ -434,6 +433,21 @@ public class SubmissionService {
         submission.setReviewedAt(Instant.now());
 
         Submission savedSubmission = submissionRepository.save(submission);
+
+        // Cleanup: remove any legacy duplicate submissions for the same listing
+        if (submission.getUser() != null && savedListing.getId() != null) {
+            try {
+                List<Submission> userSubmissions = submissionRepository.findByUserIdOrderByCreatedAtDesc(submission.getUser().getId());
+                for (Submission other : userSubmissions) {
+                    if (!other.getId().equals(savedSubmission.getId()) && savedListing.getId().equals(other.getListingId())) {
+                        log.info("[SubmissionService] Cleaning up legacy duplicate submission #{} for listing #{}", other.getId(), savedListing.getId());
+                        submissionRepository.delete(other);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[SubmissionService] Error cleaning up legacy duplicate submissions: {}", e.getMessage());
+            }
+        }
 
         // Audit log entry
         auditLogRepository.save(new AuditLog(
