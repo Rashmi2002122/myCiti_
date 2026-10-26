@@ -74,6 +74,23 @@ public class ClientProfileService {
     }
 
     /**
+     * Backward-compatible constructor for testing without ProfileReportRepository.
+     */
+    public ClientProfileService(
+        ClientProfileRepository clientProfileRepository,
+        ListingRepository listingRepository,
+        UserRepository userRepository,
+        SlugService slugService,
+        StorageService storageService,
+        String timezone,
+        double minLat,
+        double maxLat,
+        double minLng,
+        double maxLng
+    ) {
+        this(clientProfileRepository, listingRepository, userRepository, slugService, storageService, null, timezone, minLat, maxLat, minLng, maxLng);
+    }
+    /**
      * Backward-compatible constructor for testing.
      */
     public ClientProfileService(
