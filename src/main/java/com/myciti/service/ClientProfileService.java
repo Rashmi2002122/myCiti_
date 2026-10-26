@@ -143,15 +143,21 @@ public class ClientProfileService {
             throw new ResourceNotFoundException("This profile is not available");
         }
 
-        Long userId = user != null ? user.getId() : -1L;
-        listingRepository.backfillClientProfileId(profile.getId(), userId);
-
         LocalDate today = ZonedDateTime.now(zoneId).toLocalDate();
 
-        long totalCount = listingRepository.countAllClientListings(profile.getId(), userId, Status.PUBLISHED);
-        long activeCount = listingRepository.countActiveClientListings(profile.getId(), userId, Status.PUBLISHED, today);
-        long upcomingCount = listingRepository.countUpcomingClientListings(profile.getId(), userId, Status.PUBLISHED, today);
-        long expiredCount = listingRepository.countExpiredClientListings(profile.getId(), userId, Status.PUBLISHED, today);
+        long totalCount = listingRepository.countByClientProfileIdAndStatus(profile.getId(), Status.PUBLISHED);
+
+        long activeCount = listingRepository.countByClientProfileIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+            profile.getId(), Status.PUBLISHED, today, today
+        );
+
+        long upcomingCount = listingRepository.countByClientProfileIdAndStatusAndStartDateAfter(
+            profile.getId(), Status.PUBLISHED, today
+        );
+
+        long expiredCount = listingRepository.countByClientProfileIdAndStatusAndEndDateBefore(
+            profile.getId(), Status.PUBLISHED, today
+        );
 
         return PublicClientProfileResponse.fromEntity(profile, zoneId, totalCount, activeCount, upcomingCount, expiredCount);
     }
@@ -162,17 +168,8 @@ public class ClientProfileService {
      * - "upcoming": starts later (startDate > today, status = PUBLISHED)
      * - Expired, draft, pending, or declined listings are NEVER returned.
      */
-    @Transactional
+    @Transactional(readOnly = true)
     public Page<ListingResponse> getClientListings(String slug, String tab, Pageable pageable) {
-        if (slug == null || slug.isBlank()) {
-            throw new ResourceNotFoundException("Client profile not found");
-        }
-        ClientProfile cp = clientProfileRepository.findBySlug(slug.trim().toLowerCase())
-            .orElseThrow(() -> new ResourceNotFoundException("Client profile not found for slug: " + slug));
-
-        Long userId = cp.getUser() != null ? cp.getUser().getId() : -1L;
-        listingRepository.backfillClientProfileId(cp.getId(), userId);
-
         PublicClientProfileResponse profile = getPublicProfile(slug);
 
         LocalDate today = ZonedDateTime.now(zoneId).toLocalDate();
@@ -180,14 +177,14 @@ public class ClientProfileService {
 
         Page<Listing> page;
         if ("upcoming".equalsIgnoreCase(tab)) {
-            page = listingRepository.findUpcomingClientListings(profile.getId(), userId, today, pageable);
+            page = listingRepository.findUpcomingClientListings(profile.getId(), today, pageable);
         } else if ("active".equalsIgnoreCase(tab) || "live".equalsIgnoreCase(tab)) {
-            page = listingRepository.findActiveClientListings(profile.getId(), userId, today, pageable);
+            page = listingRepository.findActiveClientListings(profile.getId(), today, pageable);
         } else if ("expired".equalsIgnoreCase(tab)) {
-            page = listingRepository.findExpiredClientListings(profile.getId(), userId, today, pageable);
+            page = listingRepository.findExpiredClientListings(profile.getId(), today, pageable);
         } else {
             // "all" or default: return all published listings of this client
-            page = listingRepository.findAllClientListings(profile.getId(), userId, pageable);
+            page = listingRepository.findAllClientListings(profile.getId(), pageable);
         }
 
         return page.map(l -> mapListingToResponse(l, profile, nowTime, today));
@@ -205,12 +202,17 @@ public class ClientProfileService {
         ClientProfile profile = clientProfileRepository.findByUserId(userId)
             .orElseGet(() -> createProfileForClient(user, user.getBusinessName(), user.getClientType(), user.getPhone()));
 
-        listingRepository.backfillClientProfileId(profile.getId(), userId);
         LocalDate today = ZonedDateTime.now(zoneId).toLocalDate();
-        long totalCount = listingRepository.countAllClientListings(profile.getId(), userId, Status.PUBLISHED);
-        long activeCount = listingRepository.countActiveClientListings(profile.getId(), userId, Status.PUBLISHED, today);
-        long upcomingCount = listingRepository.countUpcomingClientListings(profile.getId(), userId, Status.PUBLISHED, today);
-        long expiredCount = listingRepository.countExpiredClientListings(profile.getId(), userId, Status.PUBLISHED, today);
+        long totalCount = listingRepository.countByClientProfileIdAndStatus(profile.getId(), Status.PUBLISHED);
+        long activeCount = listingRepository.countByClientProfileIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+            profile.getId(), Status.PUBLISHED, today, today
+        );
+        long upcomingCount = listingRepository.countByClientProfileIdAndStatusAndStartDateAfter(
+            profile.getId(), Status.PUBLISHED, today
+        );
+        long expiredCount = listingRepository.countByClientProfileIdAndStatusAndEndDateBefore(
+            profile.getId(), Status.PUBLISHED, today
+        );
 
         return ClientProfileResponse.fromEntity(profile, zoneId, totalCount, activeCount, upcomingCount, expiredCount);
     }

@@ -6,9 +6,7 @@ import com.myciti.model.Status;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -118,110 +116,55 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
         @Param("q") String q
     );
 
-    @Query("SELECT l FROM Listing l WHERE (l.clientProfileId = :clientProfileId OR (l.sourceSubmissionId IS NOT NULL AND l.sourceSubmissionId IN (SELECT s.id FROM com.myciti.model.Submission s WHERE s.user.id = :userId))) " +
+    @Query("SELECT l FROM Listing l WHERE l.clientProfileId = :clientProfileId " +
            "AND l.status = com.myciti.model.Status.PUBLISHED " +
            "AND :currentDate BETWEEN l.startDate AND l.endDate " +
            "ORDER BY l.startDate ASC")
     Page<Listing> findActiveClientListings(
         @Param("clientProfileId") Long clientProfileId,
-        @Param("userId") Long userId,
         @Param("currentDate") LocalDate currentDate,
         Pageable pageable
     );
 
-    @Query("SELECT l FROM Listing l WHERE (l.clientProfileId = :clientProfileId OR (l.sourceSubmissionId IS NOT NULL AND l.sourceSubmissionId IN (SELECT s.id FROM com.myciti.model.Submission s WHERE s.user.id = :userId))) " +
+    @Query("SELECT l FROM Listing l WHERE l.clientProfileId = :clientProfileId " +
            "AND l.status = com.myciti.model.Status.PUBLISHED " +
            "AND l.startDate > :currentDate " +
            "ORDER BY l.startDate ASC")
     Page<Listing> findUpcomingClientListings(
         @Param("clientProfileId") Long clientProfileId,
-        @Param("userId") Long userId,
         @Param("currentDate") LocalDate currentDate,
         Pageable pageable
     );
 
-    @Query("SELECT l FROM Listing l WHERE (l.clientProfileId = :clientProfileId OR (l.sourceSubmissionId IS NOT NULL AND l.sourceSubmissionId IN (SELECT s.id FROM com.myciti.model.Submission s WHERE s.user.id = :userId))) " +
+    @Query("SELECT l FROM Listing l WHERE l.clientProfileId = :clientProfileId " +
            "AND l.status = com.myciti.model.Status.PUBLISHED " +
            "ORDER BY l.startDate DESC, l.id DESC")
     Page<Listing> findAllClientListings(
         @Param("clientProfileId") Long clientProfileId,
-        @Param("userId") Long userId,
         Pageable pageable
     );
 
-    @Query("SELECT l FROM Listing l WHERE (l.clientProfileId = :clientProfileId OR (l.sourceSubmissionId IS NOT NULL AND l.sourceSubmissionId IN (SELECT s.id FROM com.myciti.model.Submission s WHERE s.user.id = :userId))) " +
+    @Query("SELECT l FROM Listing l WHERE l.clientProfileId = :clientProfileId " +
            "AND l.status = com.myciti.model.Status.PUBLISHED " +
            "AND l.endDate < :currentDate " +
            "ORDER BY l.endDate DESC, l.id DESC")
     Page<Listing> findExpiredClientListings(
         @Param("clientProfileId") Long clientProfileId,
-        @Param("userId") Long userId,
         @Param("currentDate") LocalDate currentDate,
         Pageable pageable
     );
 
-    @Query("SELECT COUNT(l) FROM Listing l WHERE (l.clientProfileId = :clientProfileId OR (l.sourceSubmissionId IS NOT NULL AND l.sourceSubmissionId IN (SELECT s.id FROM com.myciti.model.Submission s WHERE s.user.id = :userId))) AND l.status = :status")
-    long countAllClientListings(
-        @Param("clientProfileId") Long clientProfileId,
-        @Param("userId") Long userId,
-        @Param("status") Status status
+    long countByClientProfileIdAndStatus(Long clientProfileId, Status status);
+
+    long countByClientProfileIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+        Long clientProfileId, Status status, LocalDate d1, LocalDate d2
     );
 
-    @Query("SELECT COUNT(l) FROM Listing l WHERE (l.clientProfileId = :clientProfileId OR (l.sourceSubmissionId IS NOT NULL AND l.sourceSubmissionId IN (SELECT s.id FROM com.myciti.model.Submission s WHERE s.user.id = :userId))) AND l.status = :status AND :currentDate BETWEEN l.startDate AND l.endDate")
-    long countActiveClientListings(
-        @Param("clientProfileId") Long clientProfileId,
-        @Param("userId") Long userId,
-        @Param("status") Status status,
-        @Param("currentDate") LocalDate currentDate
+    long countByClientProfileIdAndStatusAndStartDateAfter(
+        Long clientProfileId, Status status, LocalDate date
     );
 
-    @Query("SELECT COUNT(l) FROM Listing l WHERE (l.clientProfileId = :clientProfileId OR (l.sourceSubmissionId IS NOT NULL AND l.sourceSubmissionId IN (SELECT s.id FROM com.myciti.model.Submission s WHERE s.user.id = :userId))) AND l.status = :status AND l.startDate > :currentDate")
-    long countUpcomingClientListings(
-        @Param("clientProfileId") Long clientProfileId,
-        @Param("userId") Long userId,
-        @Param("status") Status status,
-        @Param("currentDate") LocalDate currentDate
+    long countByClientProfileIdAndStatusAndEndDateBefore(
+        Long clientProfileId, Status status, LocalDate date
     );
-
-    @Query("SELECT COUNT(l) FROM Listing l WHERE (l.clientProfileId = :clientProfileId OR (l.sourceSubmissionId IS NOT NULL AND l.sourceSubmissionId IN (SELECT s.id FROM com.myciti.model.Submission s WHERE s.user.id = :userId))) AND l.status = :status AND l.endDate < :currentDate")
-    long countExpiredClientListings(
-        @Param("clientProfileId") Long clientProfileId,
-        @Param("userId") Long userId,
-        @Param("status") Status status,
-        @Param("currentDate") LocalDate currentDate
-    );
-
-    @Modifying
-    @Transactional
-    @Query("UPDATE Listing l SET l.clientProfileId = :clientProfileId WHERE l.clientProfileId IS NULL AND l.sourceSubmissionId IS NOT NULL AND l.sourceSubmissionId IN (SELECT s.id FROM com.myciti.model.Submission s WHERE s.user.id = :userId)")
-    int backfillClientProfileId(
-        @Param("clientProfileId") Long clientProfileId,
-        @Param("userId") Long userId
-    );
-
-    // Backward-compatibility delegates
-    default Page<Listing> findActiveClientListings(Long clientProfileId, LocalDate currentDate, Pageable pageable) {
-        return findActiveClientListings(clientProfileId, -1L, currentDate, pageable);
-    }
-    default Page<Listing> findUpcomingClientListings(Long clientProfileId, LocalDate currentDate, Pageable pageable) {
-        return findUpcomingClientListings(clientProfileId, -1L, currentDate, pageable);
-    }
-    default Page<Listing> findAllClientListings(Long clientProfileId, Pageable pageable) {
-        return findAllClientListings(clientProfileId, -1L, pageable);
-    }
-    default Page<Listing> findExpiredClientListings(Long clientProfileId, LocalDate currentDate, Pageable pageable) {
-        return findExpiredClientListings(clientProfileId, -1L, currentDate, pageable);
-    }
-    default long countByClientProfileIdAndStatus(Long clientProfileId, Status status) {
-        return countAllClientListings(clientProfileId, -1L, status);
-    }
-    default long countByClientProfileIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(Long clientProfileId, Status status, LocalDate d1, LocalDate d2) {
-        return countActiveClientListings(clientProfileId, -1L, status, d1);
-    }
-    default long countByClientProfileIdAndStatusAndStartDateAfter(Long clientProfileId, Status status, LocalDate date) {
-        return countUpcomingClientListings(clientProfileId, -1L, status, date);
-    }
-    default long countByClientProfileIdAndStatusAndEndDateBefore(Long clientProfileId, Status status, LocalDate date) {
-        return countExpiredClientListings(clientProfileId, -1L, status, date);
-    }
 }
