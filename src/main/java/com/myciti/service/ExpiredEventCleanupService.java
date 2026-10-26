@@ -60,9 +60,10 @@ public class ExpiredEventCleanupService {
     }
 
     /**
-     * Runs every day at 02:00 AM Kolkata time to delete finished events/ads
-     * and their associated photos from disk to free up database and storage space.
-     * Also runs on application startup after a 30-second initial delay.
+     * Runs every day at 02:00 AM Kolkata time.
+     * Enforces an archive retention policy: only deletes truly obsolete events/ads
+     * that ended more than 180 days ago, allowing clients and users to retain their
+     * post history and expired event badges in their profiles.
      */
     @Scheduled(cron = "0 0 2 * * ?", zone = "Asia/Kolkata")
     @org.springframework.cache.annotation.Caching(evict = {
@@ -71,8 +72,9 @@ public class ExpiredEventCleanupService {
     })
     @Transactional
     public void cleanupExpiredEventsAndStorage() {
-        LocalDate todayInKolkata = ZonedDateTime.now(kolkataZone).toLocalDate();
-        log.info("[Cleanup] Starting automated cleanup for expired events (endDate < {})...", todayInKolkata);
+        // Retain expired events for at least 180 days for client dashboard and public profile visibility
+        LocalDate retentionCutoff = ZonedDateTime.now(kolkataZone).toLocalDate().minusDays(180);
+        log.info("[Cleanup] Starting automated cleanup for archived events (endDate < {})...", retentionCutoff);
 
         int deletedListingsCount = 0;
         int deletedSubmissionsCount = 0;
@@ -80,8 +82,8 @@ public class ExpiredEventCleanupService {
         Set<String> imageUrlsToDelete = new HashSet<>();
 
         try {
-            // 1. Identify and delete expired live listings
-            List<Listing> expiredListings = listingRepository.findByEndDateBefore(todayInKolkata);
+            // 1. Identify and delete obsolete live listings past retention cutoff
+            List<Listing> expiredListings = listingRepository.findByEndDateBefore(retentionCutoff);
             for (Listing listing : expiredListings) {
                 if (listing.getImages() != null) {
                     for (ListingImage img : listing.getImages()) {
@@ -94,8 +96,8 @@ public class ExpiredEventCleanupService {
                 deletedListingsCount++;
             }
 
-            // 2. Identify and delete expired user submissions
-            List<Submission> expiredSubmissions = submissionRepository.findByEndDateBefore(todayInKolkata);
+            // 2. Identify and delete obsolete user submissions past retention cutoff
+            List<Submission> expiredSubmissions = submissionRepository.findByEndDateBefore(retentionCutoff);
             for (Submission submission : expiredSubmissions) {
                 if (submission.getImages() != null) {
                     for (SubmissionImage img : submission.getImages()) {

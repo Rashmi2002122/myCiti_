@@ -39,6 +39,7 @@ public class ClientProfileService {
     private final UserRepository userRepository;
     private final SlugService slugService;
     private final StorageService storageService;
+    private final com.myciti.repository.ProfileReportRepository profileReportRepository;
     private final ZoneId zoneId;
     private final double minLat;
     private final double maxLat;
@@ -52,6 +53,7 @@ public class ClientProfileService {
         UserRepository userRepository,
         SlugService slugService,
         StorageService storageService,
+        @Autowired(required = false) com.myciti.repository.ProfileReportRepository profileReportRepository,
         @Value("${app.timezone:Asia/Kolkata}") String timezone,
         @Value("${app.city.bbox.min-lat:6.00}") double minLat,
         @Value("${app.city.bbox.max-lat:37.50}") double maxLat,
@@ -63,6 +65,7 @@ public class ClientProfileService {
         this.userRepository = userRepository;
         this.slugService = slugService;
         this.storageService = storageService;
+        this.profileReportRepository = profileReportRepository;
         this.zoneId = ZoneId.of(timezone);
         this.minLat = minLat;
         this.maxLat = maxLat;
@@ -79,7 +82,7 @@ public class ClientProfileService {
         SlugService slugService,
         String timezone
     ) {
-        this(clientProfileRepository, listingRepository, null, slugService, null, timezone, 6.00, 37.50, 68.00, 97.50);
+        this(clientProfileRepository, listingRepository, null, slugService, null, null, timezone, 6.00, 37.50, 68.00, 97.50);
     }
 
     /**
@@ -471,5 +474,30 @@ public class ClientProfileService {
         }
 
         return dto;
+    }
+
+    @Transactional
+    public void reportProfile(String slug, Long reporterUserId, com.myciti.dto.ProfileReportRequest req) {
+        if (slug == null || slug.isBlank()) {
+            throw new ResourceNotFoundException("Client profile not found");
+        }
+        ClientProfile profile = clientProfileRepository.findBySlug(slug.trim().toLowerCase())
+            .orElseThrow(() -> new ResourceNotFoundException("Client profile not found for slug: " + slug));
+
+        if (profileReportRepository != null) {
+            ProfileReport report = new ProfileReport(profile, reporterUserId, req.getReason(), req.getDetails());
+            profileReportRepository.save(report);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public Page<com.myciti.dto.ProfileReportDto> getProfileReportsAdmin(ProfileReportStatus status, Pageable pageable) {
+        if (profileReportRepository == null) {
+            return Page.empty(pageable);
+        }
+        Page<ProfileReport> page = (status != null)
+            ? profileReportRepository.findByStatusOrderByCreatedAtDesc(status, pageable)
+            : profileReportRepository.findAll(pageable);
+        return page.map(com.myciti.dto.ProfileReportDto::fromEntity);
     }
 }

@@ -45,7 +45,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 sendRateLimitResponse(response, path, "Rate limit exceeded for ad interaction tracking (max 60 per minute)");
                 return;
             }
-        } else if ("POST".equalsIgnoreCase(method) && path.startsWith("/api/ads/campaigns/") && path.endsWith("/report")) {
+        } else if ("POST".equalsIgnoreCase(method) && ((path.startsWith("/api/ads/campaigns/") && path.endsWith("/report")) || (path.startsWith("/api/clients/") && path.endsWith("/report")))) {
             String clientIp = getClientIp(request);
             if (!rateLimitingService.tryConsumeAdReport(clientIp)) {
                 sendRateLimitResponse(response, path, "Rate limit exceeded for ad report submissions (max 5 per hour)");

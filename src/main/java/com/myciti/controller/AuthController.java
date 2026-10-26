@@ -49,7 +49,7 @@ public class AuthController {
     ) {
         verifyOrigin(httpRequest);
         AuthService.AuthResult result = authService.loginWithGoogle(request.getIdToken());
-        setRefreshTokenCookie(response, result.rawRefreshToken());
+        setRefreshTokenCookie(httpRequest, response, result.rawRefreshToken());
         // Return accessToken and user details; refreshToken is strictly isolated in the HttpOnly cookie
         return ResponseEntity.ok(new AuthResponse(result.accessToken(), result.user()));
     }
@@ -73,7 +73,7 @@ public class AuthController {
 
         String token = resolveRefreshToken(request, cookieRefreshToken, headerRefreshToken, bodyRequest);
         AuthService.AuthResult result = authService.refreshSession(token);
-        setRefreshTokenCookie(response, result.rawRefreshToken());
+        setRefreshTokenCookie(request, response, result.rawRefreshToken());
         return ResponseEntity.ok(new AuthResponse(result.accessToken(), result.user()));
     }
 
@@ -92,7 +92,7 @@ public class AuthController {
 
         String token = resolveRefreshToken(request, cookieRefreshToken, headerRefreshToken, bodyRequest);
         authService.logout(token);
-        clearRefreshTokenCookie(response);
+        clearRefreshTokenCookie(request, response);
         return ResponseEntity.ok().build();
     }
 
@@ -158,30 +158,45 @@ public class AuthController {
         throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden: Invalid request origin");
     }
 
-    private void setRefreshTokenCookie(HttpServletResponse response, String refreshToken) {
-        // When cookieSecure is true (production HTTPS cross-domain), use SameSite=None so browser permits cross-origin cookies.
-        String sameSitePolicy = cookieSecure ? "None" : "Lax";
+    private boolean isHttps(HttpServletRequest request) {
+        if (cookieSecure) return true;
+        if (request == null) return false;
+        if (request.isSecure()) return true;
+        String forwardedProto = request.getHeader("X-Forwarded-Proto");
+        if (forwardedProto != null && "https".equalsIgnoreCase(forwardedProto.trim())) return true;
+        String forwardedSsl = request.getHeader("X-Forwarded-Ssl");
+        if (forwardedSsl != null && "on".equalsIgnoreCase(forwardedSsl.trim())) return true;
+        String host = request.getHeader("Host");
+        return host != null && host.contains("onrender.com");
+    }
+
+    private void setRefreshTokenCookie(HttpServletRequest request, HttpServletResponse response, String refreshToken) {
+        boolean https = isHttps(request);
+        // When HTTPS cross-domain, use SameSite=None so browser permits cross-origin cookies.
+        String sameSitePolicy = https ? "None" : "Lax";
         ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from("refresh_token", refreshToken)
             .httpOnly(true)
-            .secure(cookieSecure)
+            .secure(https)
             .path("/api/auth")
             .maxAge(30L * 24 * 60 * 60) // 30 days
             .sameSite(sameSitePolicy);
 
-        ResponseCookie cookie = builder.build();
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+        String cookieHeader = builder.build().toString() + (https ? "; Partitioned" : "");
+        response.addHeader(HttpHeaders.SET_COOKIE, cookieHeader);
     }
 
-    private void clearRefreshTokenCookie(HttpServletResponse response) {
-        String sameSitePolicy = cookieSecure ? "None" : "Lax";
-        ResponseCookie cookie = ResponseCookie.from("refresh_token", "")
+    private void clearRefreshTokenCookie(HttpServletRequest request, HttpServletResponse response) {
+        boolean https = isHttps(request);
+        String sameSitePolicy = https ? "None" : "Lax";
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from("refresh_token", "")
             .httpOnly(true)
-            .secure(cookieSecure)
+            .secure(https)
             .path("/api/auth")
             .maxAge(0)
-            .sameSite(sameSitePolicy)
-            .build();
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+            .sameSite(sameSitePolicy);
+
+        String cookieHeader = builder.build().toString() + (https ? "; Partitioned" : "");
+        response.addHeader(HttpHeaders.SET_COOKIE, cookieHeader);
     }
 
     private String extractCookie(HttpServletRequest request, String name) {

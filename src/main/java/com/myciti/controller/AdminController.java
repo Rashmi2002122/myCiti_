@@ -24,15 +24,18 @@ public class AdminController {
     private final ListingService listingService;
     private final StorageService storageService;
     private final UserService userService;
+    private final com.myciti.service.ClientProfileService clientProfileService;
 
     public AdminController(
         ListingService listingService,
         StorageService storageService,
-        UserService userService
+        UserService userService,
+        com.myciti.service.ClientProfileService clientProfileService
     ) {
         this.listingService = listingService;
         this.storageService = storageService;
         this.userService = userService;
+        this.clientProfileService = clientProfileService;
     }
 
     /**
@@ -131,5 +134,16 @@ public class AdminController {
         @org.springframework.data.web.PageableDefault(size = 50) org.springframework.data.domain.Pageable pageable
     ) {
         return ResponseEntity.ok(userService.getAuditLogs(pageable));
+    }
+
+    /**
+     * GET /api/admin/client-profiles/reports
+     */
+    @GetMapping("/client-profiles/reports")
+    public ResponseEntity<org.springframework.data.domain.Page<com.myciti.dto.ProfileReportDto>> getClientProfileReports(
+        @RequestParam(required = false) com.myciti.model.ProfileReportStatus status,
+        @org.springframework.data.web.PageableDefault(size = 20) org.springframework.data.domain.Pageable pageable
+    ) {
+        return ResponseEntity.ok(clientProfileService.getProfileReportsAdmin(status, pageable));
     }
 }

@@ -41,4 +41,20 @@ public class PublicClientController {
     ) {
         return ResponseEntity.ok(clientProfileService.getClientListings(slug, tab, pageable));
     }
+
+    /**
+     * Public / Authenticated endpoint: POST /api/clients/{slug}/report
+     * Report a client business profile for fraudulent or abusive behavior.
+     */
+    @PostMapping("/{slug}/report")
+    public ResponseEntity<java.util.Map<String, String>> reportProfile(
+        @PathVariable String slug,
+        @org.springframework.security.core.annotation.AuthenticationPrincipal com.myciti.model.User user,
+        @jakarta.validation.Valid @RequestBody com.myciti.dto.ProfileReportRequest req
+    ) {
+        Long reporterId = (user != null) ? user.getId() : null;
+        clientProfileService.reportProfile(slug, reporterId, req);
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+            .body(java.util.Map.of("message", "Profile report submitted successfully. Thank you for keeping myCiti safe."));
+    }
 }

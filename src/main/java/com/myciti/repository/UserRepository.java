@@ -50,4 +50,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
         WHERE u.status = com.myciti.model.UserStatus.ACTIVE
     """)
     java.util.List<User> findAllActiveUsers();
+
+    long countByStatus(com.myciti.model.UserStatus status);
 }

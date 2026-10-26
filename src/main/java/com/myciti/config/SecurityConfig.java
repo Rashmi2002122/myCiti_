@@ -51,6 +51,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 // Narrow to GET-only to prevent accidental public exposure of future mutating endpoints
                 .requestMatchers(HttpMethod.GET, "/api/clients/{slug}", "/api/clients/{slug}/listings").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/clients/*/report").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/listings/**").permitAll()
                 .requestMatchers("/api/ads/active").permitAll()
                 .requestMatchers("/api/ads/campaigns/*/impressions", "/api/ads/campaigns/*/click").permitAll()

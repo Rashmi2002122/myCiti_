@@ -87,8 +87,13 @@ public class GeoTargetingService {
      */
     @Transactional(readOnly = true)
     public AudienceEstimateResponse estimateAudience(TargetType targetType, Double centerLat, Double centerLng, Double radiusKm, String targetCity) {
-        List<User> matches = findTargetUsers(targetType, centerLat, centerLng, radiusKm, targetCity);
-        int count = matches.size();
+        long count;
+        if (targetType == TargetType.BROADCAST) {
+            count = userRepository.countByStatus(com.myciti.model.UserStatus.ACTIVE);
+        } else {
+            List<User> matches = findTargetUsers(targetType, centerLat, centerLng, radiusKm, targetCity);
+            count = matches.size();
+        }
 
         if (count < 10) {
             return new AudienceEstimateResponse(targetType, radiusKm, targetCity, "< 10 users in this area", false);
