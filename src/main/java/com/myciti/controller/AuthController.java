@@ -180,12 +180,8 @@ public class AuthController {
             .maxAge(30L * 24 * 60 * 60) // 30 days
             .sameSite(sameSitePolicy);
 
-        if (https) {
-            builder.partitioned(true);
-        }
-
-        ResponseCookie cookie = builder.build();
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+        String cookieHeader = builder.build().toString() + (https ? "; Partitioned" : "");
+        response.addHeader(HttpHeaders.SET_COOKIE, cookieHeader);
     }
 
     private void clearRefreshTokenCookie(HttpServletRequest request, HttpServletResponse response) {
@@ -198,12 +194,8 @@ public class AuthController {
             .maxAge(0)
             .sameSite(sameSitePolicy);
 
-        if (https) {
-            builder.partitioned(true);
-        }
-
-        ResponseCookie cookie = builder.build();
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+        String cookieHeader = builder.build().toString() + (https ? "; Partitioned" : "");
+        response.addHeader(HttpHeaders.SET_COOKIE, cookieHeader);
     }
 
     private String extractCookie(HttpServletRequest request, String name) {
