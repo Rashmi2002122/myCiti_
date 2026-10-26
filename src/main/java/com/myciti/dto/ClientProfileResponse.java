@@ -38,12 +38,18 @@ public class ClientProfileResponse {
     private Instant createdAt;
     private Instant updatedAt;
     private Boolean openNow;
+    private long totalListingsCount;
     private long activeListingsCount;
     private long upcomingListingsCount;
+    private long expiredListingsCount;
 
     public ClientProfileResponse() {}
 
     public static ClientProfileResponse fromEntity(ClientProfile profile, ZoneId zoneId, long activeCount, long upcomingCount) {
+        return fromEntity(profile, zoneId, activeCount + upcomingCount, activeCount, upcomingCount, 0L);
+    }
+
+    public static ClientProfileResponse fromEntity(ClientProfile profile, ZoneId zoneId, long totalCount, long activeCount, long upcomingCount, long expiredCount) {
         if (profile == null) return null;
         ClientProfileResponse dto = new ClientProfileResponse();
         dto.setId(profile.getId());
@@ -67,8 +73,10 @@ public class ClientProfileResponse {
         dto.setStatus(profile.getStatus());
         dto.setCreatedAt(profile.getCreatedAt());
         dto.setUpdatedAt(profile.getUpdatedAt());
+        dto.setTotalListingsCount(totalCount);
         dto.setActiveListingsCount(activeCount);
         dto.setUpcomingListingsCount(upcomingCount);
+        dto.setExpiredListingsCount(expiredCount);
 
         // Calculate openNow
         if (profile.getDailyOpenTime() != null && profile.getDailyCloseTime() != null) {
@@ -278,5 +286,20 @@ public class ClientProfileResponse {
 
     public void setUpcomingListingsCount(long upcomingListingsCount) {
         this.upcomingListingsCount = upcomingListingsCount;
+    }
+    public long getTotalListingsCount() {
+        return totalListingsCount;
+    }
+
+    public void setTotalListingsCount(long totalListingsCount) {
+        this.totalListingsCount = totalListingsCount;
+    }
+
+    public long getExpiredListingsCount() {
+        return expiredListingsCount;
+    }
+
+    public void setExpiredListingsCount(long expiredListingsCount) {
+        this.expiredListingsCount = expiredListingsCount;
     }
 }

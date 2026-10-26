@@ -26,6 +26,7 @@ public class ListingResponse {
     private String contactPhone;
     private Status status;
     private boolean openNow;
+    private Boolean isExpired;
     private Double distanceKm;
     private String primaryImageUrl;
     private List<ImageResponse> images;
@@ -281,5 +282,13 @@ public class ListingResponse {
 
     public void setOtherUpdatesCount(Integer otherUpdatesCount) {
         this.otherUpdatesCount = otherUpdatesCount;
+    }
+
+    public Boolean getIsExpired() {
+        return isExpired;
+    }
+
+    public void setIsExpired(Boolean isExpired) {
+        this.isExpired = isExpired;
     }
 }

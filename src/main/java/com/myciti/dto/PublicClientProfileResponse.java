@@ -30,13 +30,19 @@ public class PublicClientProfileResponse {
     private boolean verified;
     private Instant verifiedAt;
     private Instant createdAt;
+    private long totalListingsCount;
     private long activeListingsCount;
     private long upcomingListingsCount;
+    private long expiredListingsCount;
 
     public PublicClientProfileResponse() {
     }
 
     public static PublicClientProfileResponse fromEntity(ClientProfile profile, ZoneId zoneId, long activeCount, long upcomingCount) {
+        return fromEntity(profile, zoneId, activeCount + upcomingCount, activeCount, upcomingCount, 0L);
+    }
+
+    public static PublicClientProfileResponse fromEntity(ClientProfile profile, ZoneId zoneId, long totalCount, long activeCount, long upcomingCount, long expiredCount) {
         if (profile == null) return null;
 
         PublicClientProfileResponse dto = new PublicClientProfileResponse();
@@ -70,8 +76,10 @@ public class PublicClientProfileResponse {
         dto.setVerified(profile.isVerified());
         dto.setVerifiedAt(profile.getVerifiedAt());
         dto.setCreatedAt(profile.getCreatedAt());
+        dto.setTotalListingsCount(totalCount);
         dto.setActiveListingsCount(activeCount);
         dto.setUpcomingListingsCount(upcomingCount);
+        dto.setExpiredListingsCount(expiredCount);
 
         return dto;
     }
@@ -264,5 +272,20 @@ public class PublicClientProfileResponse {
 
     public void setUpcomingListingsCount(long upcomingListingsCount) {
         this.upcomingListingsCount = upcomingListingsCount;
+    }
+    public long getTotalListingsCount() {
+        return totalListingsCount;
+    }
+
+    public void setTotalListingsCount(long totalListingsCount) {
+        this.totalListingsCount = totalListingsCount;
+    }
+
+    public long getExpiredListingsCount() {
+        return expiredListingsCount;
+    }
+
+    public void setExpiredListingsCount(long expiredListingsCount) {
+        this.expiredListingsCount = expiredListingsCount;
     }
 }

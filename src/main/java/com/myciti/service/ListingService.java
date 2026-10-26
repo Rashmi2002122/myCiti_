@@ -363,7 +363,14 @@ public class ListingService {
         dto.setUpdatedAt(listing.getUpdatedAt());
         dto.setClientProfileId(listing.getClientProfileId());
         dto.setDistanceKm(distanceKm != null ? roundTwoDecimals(distanceKm) : null);
-        dto.setOpenNow(computeOpenNow(listing.getDailyOpenTime(), listing.getDailyCloseTime(), currentTime));
+        LocalDate today = ZonedDateTime.now(kolkataZone).toLocalDate();
+        boolean expired = listing.getEndDate() != null && listing.getEndDate().isBefore(today);
+        dto.setIsExpired(expired);
+        if (expired) {
+            dto.setOpenNow(false);
+        } else {
+            dto.setOpenNow(computeOpenNow(listing.getDailyOpenTime(), listing.getDailyCloseTime(), currentTime));
+        }
         return dto;
     }
 
@@ -417,7 +424,14 @@ public class ListingService {
             dto.setClientProfileId(((Number) row[19]).longValue());
         }
 
-        dto.setOpenNow(computeOpenNow(dto.getDailyOpenTime(), dto.getDailyCloseTime(), currentTime));
+        LocalDate today = ZonedDateTime.now(kolkataZone).toLocalDate();
+        boolean expired = dto.getEndDate() != null && dto.getEndDate().isBefore(today);
+        dto.setIsExpired(expired);
+        if (expired) {
+            dto.setOpenNow(false);
+        } else {
+            dto.setOpenNow(computeOpenNow(dto.getDailyOpenTime(), dto.getDailyCloseTime(), currentTime));
+        }
         return dto;
     }
 

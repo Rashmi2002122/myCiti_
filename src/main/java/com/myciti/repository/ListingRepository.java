@@ -136,11 +136,35 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
         Pageable pageable
     );
 
+    @Query("SELECT l FROM Listing l WHERE l.clientProfileId = :clientProfileId " +
+           "AND l.status = com.myciti.model.Status.PUBLISHED " +
+           "ORDER BY l.startDate DESC, l.id DESC")
+    Page<Listing> findAllClientListings(
+        @Param("clientProfileId") Long clientProfileId,
+        Pageable pageable
+    );
+
+    @Query("SELECT l FROM Listing l WHERE l.clientProfileId = :clientProfileId " +
+           "AND l.status = com.myciti.model.Status.PUBLISHED " +
+           "AND l.endDate < :currentDate " +
+           "ORDER BY l.endDate DESC, l.id DESC")
+    Page<Listing> findExpiredClientListings(
+        @Param("clientProfileId") Long clientProfileId,
+        @Param("currentDate") LocalDate currentDate,
+        Pageable pageable
+    );
+
+    long countByClientProfileIdAndStatus(Long clientProfileId, Status status);
+
     long countByClientProfileIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
         Long clientProfileId, Status status, LocalDate d1, LocalDate d2
     );
 
     long countByClientProfileIdAndStatusAndStartDateAfter(
+        Long clientProfileId, Status status, LocalDate date
+    );
+
+    long countByClientProfileIdAndStatusAndEndDateBefore(
         Long clientProfileId, Status status, LocalDate date
     );
 }

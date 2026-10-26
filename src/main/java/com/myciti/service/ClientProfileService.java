@@ -145,6 +145,8 @@ public class ClientProfileService {
 
         LocalDate today = ZonedDateTime.now(zoneId).toLocalDate();
 
+        long totalCount = listingRepository.countByClientProfileIdAndStatus(profile.getId(), Status.PUBLISHED);
+
         long activeCount = listingRepository.countByClientProfileIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
             profile.getId(), Status.PUBLISHED, today, today
         );
@@ -153,7 +155,11 @@ public class ClientProfileService {
             profile.getId(), Status.PUBLISHED, today
         );
 
-        return PublicClientProfileResponse.fromEntity(profile, zoneId, activeCount, upcomingCount);
+        long expiredCount = listingRepository.countByClientProfileIdAndStatusAndEndDateBefore(
+            profile.getId(), Status.PUBLISHED, today
+        );
+
+        return PublicClientProfileResponse.fromEntity(profile, zoneId, totalCount, activeCount, upcomingCount, expiredCount);
     }
 
     /**
@@ -172,11 +178,16 @@ public class ClientProfileService {
         Page<Listing> page;
         if ("upcoming".equalsIgnoreCase(tab)) {
             page = listingRepository.findUpcomingClientListings(profile.getId(), today, pageable);
-        } else {
+        } else if ("active".equalsIgnoreCase(tab) || "live".equalsIgnoreCase(tab)) {
             page = listingRepository.findActiveClientListings(profile.getId(), today, pageable);
+        } else if ("expired".equalsIgnoreCase(tab)) {
+            page = listingRepository.findExpiredClientListings(profile.getId(), today, pageable);
+        } else {
+            // "all" or default: return all published listings of this client
+            page = listingRepository.findAllClientListings(profile.getId(), pageable);
         }
 
-        return page.map(l -> mapListingToResponse(l, profile, nowTime));
+        return page.map(l -> mapListingToResponse(l, profile, nowTime, today));
     }
 
     /**
@@ -192,14 +203,18 @@ public class ClientProfileService {
             .orElseGet(() -> createProfileForClient(user, user.getBusinessName(), user.getClientType(), user.getPhone()));
 
         LocalDate today = ZonedDateTime.now(zoneId).toLocalDate();
+        long totalCount = listingRepository.countByClientProfileIdAndStatus(profile.getId(), Status.PUBLISHED);
         long activeCount = listingRepository.countByClientProfileIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
             profile.getId(), Status.PUBLISHED, today, today
         );
         long upcomingCount = listingRepository.countByClientProfileIdAndStatusAndStartDateAfter(
             profile.getId(), Status.PUBLISHED, today
         );
+        long expiredCount = listingRepository.countByClientProfileIdAndStatusAndEndDateBefore(
+            profile.getId(), Status.PUBLISHED, today
+        );
 
-        return ClientProfileResponse.fromEntity(profile, zoneId, activeCount, upcomingCount);
+        return ClientProfileResponse.fromEntity(profile, zoneId, totalCount, activeCount, upcomingCount, expiredCount);
     }
 
     /**
@@ -394,6 +409,10 @@ public class ClientProfileService {
     }
 
     private ListingResponse mapListingToResponse(Listing listing, PublicClientProfileResponse client, LocalTime currentTime) {
+        return mapListingToResponse(listing, client, currentTime, LocalDate.now(zoneId));
+    }
+
+    private ListingResponse mapListingToResponse(Listing listing, PublicClientProfileResponse client, LocalTime currentTime, LocalDate today) {
         ListingResponse dto = new ListingResponse();
         dto.setId(listing.getId());
         dto.setTitle(listing.getTitle());
@@ -422,7 +441,14 @@ public class ClientProfileService {
         dto.setClientLogoUrl(client.getLogoUrl());
         dto.setClientType(client.getClientType() != null ? client.getClientType().name() : null);
 
-        if (listing.getDailyOpenTime() != null && listing.getDailyCloseTime() != null) {
+        boolean expired = listing.getEndDate() != null && listing.getEndDate().isBefore(today);
+        dto.setIsExpired(expired);
+
+        if (expired) {
+            dto.setOpenNow(false);
+        } else if (listing.getStartDate() != null && listing.getStartDate().isAfter(today)) {
+            dto.setOpenNow(false);
+        } else if (listing.getDailyOpenTime() != null && listing.getDailyCloseTime() != null) {
             LocalTime open = listing.getDailyOpenTime();
             LocalTime close = listing.getDailyCloseTime();
             if (open.isBefore(close)) {
@@ -431,7 +457,7 @@ public class ClientProfileService {
                 dto.setOpenNow(!currentTime.isBefore(open) || currentTime.isBefore(close));
             }
         } else {
-            dto.setOpenNow(false);
+            dto.setOpenNow(true);
         }
 
         if (listing.getImages() != null) {
