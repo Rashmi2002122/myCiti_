@@ -12,6 +12,8 @@ import com.myciti.repository.ListingRepository;
 import com.myciti.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
@@ -140,6 +142,7 @@ public class ClientProfileService {
      * - Throws 404 if profile is HIDDEN, user is SUSPENDED, or user is not a CLIENT/ADMIN.
      * - Returns public fields only; hides phone unless showPhone is true.
      */
+    @Cacheable(value = "clientProfiles", key = "#slug != null ? #slug.trim().toLowerCase() : ''")
     @Transactional(readOnly = true)
     public PublicClientProfileResponse getPublicProfile(String slug) {
         if (slug == null || slug.isBlank()) {
@@ -241,6 +244,7 @@ public class ClientProfileService {
      * Client endpoint: PUT /api/me/client-profile.
      * Updates client profile details with validation, HTML stripping, and Indian phone sanitization.
      */
+    @CacheEvict(value = "clientProfiles", allEntries = true)
     @Transactional
     public ClientProfileResponse updateMyClientProfile(Long userId, UpdateClientProfileRequest req) {
         User user = getUserOrThrow(userId);
@@ -338,6 +342,7 @@ public class ClientProfileService {
      * Client endpoint: POST /api/me/client-profile/logo.
      * Uploads business logo (max 5 MB, resized to 400px, EXIF stripped).
      */
+    @CacheEvict(value = "clientProfiles", allEntries = true)
     @Transactional
     public String updateLogo(Long userId, MultipartFile file) throws IOException {
         User user = getUserOrThrow(userId);
@@ -368,6 +373,7 @@ public class ClientProfileService {
      * Client endpoint: POST /api/me/client-profile/cover.
      * Uploads business cover banner (max 5 MB, resized to 1200px wide, EXIF stripped).
      */
+    @CacheEvict(value = "clientProfiles", allEntries = true)
     @Transactional
     public String updateCover(Long userId, MultipartFile file) throws IOException {
         User user = getUserOrThrow(userId);

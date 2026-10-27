@@ -68,7 +68,8 @@ public class ExpiredEventCleanupService {
     @Scheduled(cron = "0 0 2 * * ?", zone = "Asia/Kolkata")
     @org.springframework.cache.annotation.Caching(evict = {
         @org.springframework.cache.annotation.CacheEvict(value = "listings", allEntries = true),
-        @org.springframework.cache.annotation.CacheEvict(value = "listingById", allEntries = true)
+        @org.springframework.cache.annotation.CacheEvict(value = "listingById", allEntries = true),
+        @org.springframework.cache.annotation.CacheEvict(value = "clientProfiles", allEntries = true)
     })
     @Transactional
     public void cleanupExpiredEventsAndStorage() {

@@ -35,27 +35,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         this.userRepository = userRepository;
     }
 
-    private static final long CACHE_TTL_MS = 60_000L; // 60 seconds TTL
-
-    private static class CachedUser {
-        final User user;
-        final long cachedAt;
-
-        CachedUser(User user) {
-            this.user = user;
-            this.cachedAt = System.currentTimeMillis();
-        }
-
-        boolean isExpired() {
-            return (System.currentTimeMillis() - cachedAt) > CACHE_TTL_MS;
-        }
-    }
-
-    private final java.util.Map<Long, CachedUser> userCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private final com.github.benmanes.caffeine.cache.Cache<Long, User> userCache =
+        com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
+            .maximumSize(5000)
+            .expireAfterWrite(60, java.util.concurrent.TimeUnit.SECONDS)
+            .build();
 
     public void evictUser(Long userId) {
         if (userId != null) {
-            userCache.remove(userId);
+            userCache.invalidate(userId);
         }
     }
 
@@ -82,35 +70,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     Long userId = Long.parseLong(claims.getSubject());
 
                     if (userId != null) {
-                    User user = null;
-                    CachedUser cached = userCache.get(userId);
-                    if (cached != null && !cached.isExpired()) {
-                        user = cached.user;
-                    } else {
-                        Optional<User> userOpt = userRepository.findById(userId);
-                        if (userOpt.isPresent()) {
-                            user = userOpt.get();
-                            if (userCache.size() > 5000) {
-                                userCache.entrySet().removeIf(e -> e.getValue().isExpired());
-                            }
-                            userCache.put(userId, new CachedUser(user));
-                        }
-                    }
+                        User user = userCache.get(userId, id -> userRepository.findById(id).orElse(null));
 
-                    if (user != null) {
-                        if (user.getStatus() == UserStatus.ACTIVE) {
-                            String role = "ROLE_" + user.getRole().name();
-                            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                                user,
-                                null,
-                                List.of(new SimpleGrantedAuthority(role))
-                            );
-                            SecurityContextHolder.getContext().setAuthentication(authentication);
-                        } else {
-                            userCache.remove(userId);
-                            log.warn("[JwtAuthenticationFilter] Inactive or suspended user #{} attempted request to {}", userId, request.getRequestURI());
+                        if (user != null) {
+                            if (user.getStatus() == UserStatus.ACTIVE) {
+                                String role = "ROLE_" + user.getRole().name();
+                                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                                    user,
+                                    null,
+                                    List.of(new SimpleGrantedAuthority(role))
+                                );
+                                SecurityContextHolder.getContext().setAuthentication(authentication);
+                            } else {
+                                userCache.invalidate(userId);
+                                log.warn("[JwtAuthenticationFilter] Inactive or suspended user #{} attempted request to {}", userId, request.getRequestURI());
+                            }
                         }
-                    }
                 }
             } catch (Exception ex) {
                 log.debug("[JwtAuthenticationFilter] Error parsing JWT or loading user context: {}", ex.getMessage());

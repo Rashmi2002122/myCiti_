@@ -19,6 +19,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -210,8 +212,9 @@ public class NotificationService {
     }
 
     /**
-     * Get unread notification badge count.
+     * Get unread notification badge count. Cached via Caffeine for 30s to shield DB from 20s polling loops.
      */
+    @Cacheable(value = "unreadNotifications", key = "#userId")
     @Transactional(readOnly = true)
     public long getUnreadCount(Long userId) {
         return inAppNotificationRepository.countByUser_IdAndReadFalse(userId);
@@ -220,6 +223,7 @@ public class NotificationService {
     /**
      * Mark single notification as read.
      */
+    @CacheEvict(value = "unreadNotifications", key = "#userId")
     @Transactional
     public void markAsRead(Long notificationId, Long userId) {
         inAppNotificationRepository.findByIdAndUser_Id(notificationId, userId).ifPresent(n -> {
@@ -231,6 +235,7 @@ public class NotificationService {
     /**
      * Mark all notifications as read.
      */
+    @CacheEvict(value = "unreadNotifications", key = "#userId")
     @Transactional
     public void markAllAsRead(Long userId) {
         inAppNotificationRepository.markAllAsRead(userId);
@@ -239,6 +244,7 @@ public class NotificationService {
     /**
      * Delete a single user notification by ID.
      */
+    @CacheEvict(value = "unreadNotifications", key = "#userId")
     @Transactional
     public void deleteNotification(Long id, Long userId) {
         inAppNotificationRepository.deleteByIdAndUser_Id(id, userId);
@@ -247,6 +253,7 @@ public class NotificationService {
     /**
      * Clear all user notifications.
      */
+    @CacheEvict(value = "unreadNotifications", key = "#userId")
     @Transactional
     public void clearAllNotifications(Long userId) {
         inAppNotificationRepository.deleteByUser_Id(userId);
@@ -255,6 +262,7 @@ public class NotificationService {
     /**
      * Send in-app notification and web push to a target list of users.
      */
+    @CacheEvict(value = "unreadNotifications", allEntries = true)
     @Transactional
     public int dispatchNotificationToUsers(List<User> recipients, Announcement announcement, String title, String message, String linkUrl) {
         if (recipients == null || recipients.isEmpty()) {
