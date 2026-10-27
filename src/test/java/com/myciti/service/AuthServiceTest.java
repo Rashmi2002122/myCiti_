@@ -165,12 +165,14 @@ public class AuthServiceTest {
     @Test
     void refreshSession_revokedOrExpiredToken_throwsBadCredentials() {
         User user = new User("sub-1", "user@example.com", "User", null);
+        user.setId(1L);
         RefreshToken revokedToken = new RefreshToken(user, "revoked-hash", Instant.now().plusSeconds(3600));
         revokedToken.setRevokedAt(Instant.now());
 
         when(refreshTokenRepository.findByTokenHash(anyString())).thenReturn(Optional.of(revokedToken));
 
         assertThrows(BadCredentialsException.class, () -> authService.refreshSession("raw-token"));
+        verify(refreshTokenRepository, never()).revokeAllForUser(anyLong(), any(Instant.class));
     }
 
     @Test

@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
@@ -30,6 +31,7 @@ public class EmailNotificationService {
     /**
      * Notify owner/admin when a new advertisement is submitted.
      */
+    @Async
     public void notifyOwnerNewSubmission(String submissionTitle, String submitterName, String submitterEmail, Long submissionId) {
         if (!mailEnabled || mailSender == null) {
             log.info("[Notification] New advertisement submitted for review: #{} '{}' by {} ({}). (Mail sending disabled)",
@@ -72,6 +74,7 @@ public class EmailNotificationService {
     /**
      * Notify submitter that their advertisement was approved.
      */
+    @Async
     public void notifyUserApproved(String toEmail, String userName, String submissionTitle, Long listingId) {
         if (!mailEnabled || mailSender == null || toEmail == null || toEmail.isBlank()) {
             log.info("[Notification] Advertisement approved: '{}' for user {} ({}). Listing ID: {}. (Mail sending disabled)",
@@ -104,6 +107,7 @@ public class EmailNotificationService {
     /**
      * Notify submitter that their advertisement was declined with reason.
      */
+    @Async
     public void notifyUserDeclined(String toEmail, String userName, String submissionTitle, String reason) {
         if (!mailEnabled || mailSender == null || toEmail == null || toEmail.isBlank()) {
             log.info("[Notification] Advertisement declined: '{}' for user {} ({}). Reason: {}. (Mail sending disabled)",

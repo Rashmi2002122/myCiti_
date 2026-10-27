@@ -62,6 +62,24 @@ public class NotificationService {
 
     private PushService pushService;
 
+    private final java.util.concurrent.Executor pushExecutor = new java.util.concurrent.ThreadPoolExecutor(
+        4,
+        16,
+        60L,
+        java.util.concurrent.TimeUnit.SECONDS,
+        new java.util.concurrent.LinkedBlockingQueue<>(1000),
+        new java.util.concurrent.ThreadFactory() {
+            private final java.util.concurrent.atomic.AtomicInteger counter = new java.util.concurrent.atomic.AtomicInteger(1);
+            @Override
+            public Thread newThread(Runnable r) {
+                Thread t = new Thread(r, "push-worker-" + counter.getAndIncrement());
+                t.setDaemon(true);
+                return t;
+            }
+        },
+        new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy()
+    );
+
     @Autowired
     public NotificationService(
         PushSubscriptionRepository pushSubscriptionRepository,
@@ -339,7 +357,7 @@ public class NotificationService {
                 } catch (Exception ex) {
                     log.error("[WebPush] Delivery exception for user #{}: {}", userId, ex.getMessage(), ex);
                 }
-            });
+            }, pushExecutor);
         }
     }
 

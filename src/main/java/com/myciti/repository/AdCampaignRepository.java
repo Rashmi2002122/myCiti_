@@ -35,6 +35,6 @@ public interface AdCampaignRepository extends JpaRepository<AdCampaign, Long> {
     void incrementImpressions(@Param("id") Long id, @Param("count") long count);
 
     @Modifying
-    @Query("UPDATE AdCampaign c SET c.clicksCount = c.clicksCount + 1 WHERE c.id = :id")
-    void incrementClicks(@Param("id") Long id);
+    @Query("UPDATE AdCampaign c SET c.clicksCount = c.clicksCount + :count WHERE c.id = :id")
+    void incrementClicks(@Param("id") Long id, @Param("count") long count);
 }

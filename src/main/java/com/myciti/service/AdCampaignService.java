@@ -21,6 +21,10 @@ import java.util.List;
 @Service
 public class AdCampaignService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AdCampaignService.class);
+    private final java.util.concurrent.ConcurrentHashMap<Long, java.util.concurrent.atomic.LongAdder> pendingImpressions = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<Long, java.util.concurrent.atomic.LongAdder> pendingClicks = new java.util.concurrent.ConcurrentHashMap<>();
+
     private final AdCampaignRepository adCampaignRepository;
     private final AdReportRepository adReportRepository;
     private final ListingRepository listingRepository;
@@ -255,21 +259,54 @@ public class AdCampaignService {
     }
 
     /**
-     * Record impression count.
+     * Record impression count into high-performance in-memory buffer.
      */
-    @Transactional
     public void recordImpressions(Long campaignId, long count) {
-        if (count > 0 && count <= 50) {
-            adCampaignRepository.incrementImpressions(campaignId, count);
+        if (campaignId != null && count > 0 && count <= 50) {
+            pendingImpressions.computeIfAbsent(campaignId, k -> new java.util.concurrent.atomic.LongAdder()).add(count);
         }
     }
 
     /**
-     * Record click count.
+     * Record click count into high-performance in-memory buffer.
      */
-    @Transactional
     public void recordClick(Long campaignId) {
-        adCampaignRepository.incrementClicks(campaignId);
+        if (campaignId != null) {
+            pendingClicks.computeIfAbsent(campaignId, k -> new java.util.concurrent.atomic.LongAdder()).increment();
+        }
+    }
+
+    /**
+     * Periodic batch flush of ad impressions and clicks to database every 15 seconds.
+     * Prevents PostgreSQL row-lock contention under high concurrent traffic.
+     */
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 15000)
+    @Transactional
+    public void flushAdMetrics() {
+        if (!pendingImpressions.isEmpty()) {
+            pendingImpressions.forEach((id, adder) -> {
+                long delta = adder.sumThenReset();
+                if (delta > 0) {
+                    try {
+                        adCampaignRepository.incrementImpressions(id, delta);
+                    } catch (Exception e) {
+                        log.warn("Failed to flush impressions for ad campaign #{}: {}", id, e.getMessage());
+                    }
+                }
+            });
+        }
+        if (!pendingClicks.isEmpty()) {
+            pendingClicks.forEach((id, adder) -> {
+                long delta = adder.sumThenReset();
+                if (delta > 0) {
+                    try {
+                        adCampaignRepository.incrementClicks(id, delta);
+                    } catch (Exception e) {
+                        log.warn("Failed to flush clicks for ad campaign #{}: {}", id, e.getMessage());
+                    }
+                }
+            });
+        }
     }
 
     /**

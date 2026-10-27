@@ -24,7 +24,6 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
 
 @Service
 public class AuthService {
@@ -151,6 +150,19 @@ public class AuthService {
             .orElseThrow(() -> new BadCredentialsException("Invalid or revoked refresh token"));
 
         if (storedToken.isRevoked()) {
+            Instant revokedAt = storedToken.getRevokedAt();
+            Duration timeSinceRevocation = (revokedAt != null) ? Duration.between(revokedAt, Instant.now()) : Duration.ofDays(999);
+            boolean withinGracePeriod = revokedAt != null
+                    && !revokedAt.equals(Instant.EPOCH)
+                    && !timeSinceRevocation.isNegative()
+                    && timeSinceRevocation.getSeconds() <= 30;
+
+            if (withinGracePeriod) {
+                log.warn("[AuthService] Refresh token invoked within {}s grace window for user #{}. Rejecting duplicate refresh without terminating user sessions.",
+                    timeSinceRevocation.getSeconds(), storedToken.getUser() != null ? storedToken.getUser().getId() : null);
+                throw new BadCredentialsException("Refresh token was recently rotated. Please retry with the latest token.");
+            }
+
             User user = storedToken.getUser();
             Long userId = user != null ? user.getId() : null;
             String userEmail = user != null ? user.getEmail() : "unknown";
@@ -203,18 +215,6 @@ public class AuthService {
             if (!idsToRevoke.isEmpty()) {
                 refreshTokenRepository.revokeByIds(idsToRevoke, Instant.now());
             }
-        }
-    }
-
-    /**
-     * Nightly cleanup job at 03:00 AM (Asia/Kolkata) to purge all expired and revoked tokens database-wide.
-     */
-    @Scheduled(cron = "0 0 3 * * ?", zone = "Asia/Kolkata")
-    @Transactional
-    public void purgeExpiredAndRevokedTokens() {
-        int purged = refreshTokenRepository.deleteAllRevokedAndExpired(Instant.now());
-        if (purged > 0) {
-            log.info("[AuthService] Nightly cleanup: purged {} expired/revoked refresh tokens from DB.", purged);
         }
     }
 
