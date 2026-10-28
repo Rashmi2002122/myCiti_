@@ -89,7 +89,7 @@ public class ListingService {
             trimmedQ = trimmedQ.substring(0, 100);
         }
         String categoryStr = (category != null) ? category.name() : null;
-        String cityStr = (city != null && !city.trim().isEmpty() && !city.equalsIgnoreCase("ALL")) ? city.trim() : null;
+        String cityStr = (city != null && !city.trim().isEmpty() && !city.equalsIgnoreCase("ALL") && !city.equalsIgnoreCase("All Odisha")) ? city.trim() : null;
 
         if (lat != null && lng != null) {
             List<Object[]> rows = listingRepository.findActiveWithDistance(

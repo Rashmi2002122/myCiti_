@@ -190,6 +190,7 @@ public class AdCampaignService {
     @Cacheable(value = "activeAds", key = "{#userLat, #userLng, #city}", condition = "#userLat == null && #userLng == null")
     @Transactional(readOnly = true)
     public List<ActiveAdDto> getActiveAds(Double userLat, Double userLng, String city) {
+        String resolvedCity = (city != null && !city.trim().isEmpty() && !city.equalsIgnoreCase("ALL") && !city.equalsIgnoreCase("All Odisha")) ? city.trim() : null;
         LocalDate today = LocalDate.now(zoneId);
         List<AdCampaign> active = adCampaignRepository.findActiveApprovedCampaigns(today);
         List<ActiveAdDto> results = new ArrayList<>();
@@ -209,10 +210,10 @@ public class AdCampaignService {
                     distanceKm = GeoTargetingService.haversineKm(userLat, userLng, l.getLatitude(), l.getLongitude());
                 }
             } else if (c.getTargetType() == TargetType.CITY) {
-                if (city != null && c.getTargetCity() != null && city.equalsIgnoreCase(c.getTargetCity().trim())) {
+                if (resolvedCity != null && c.getTargetCity() != null && resolvedCity.equalsIgnoreCase(c.getTargetCity().trim())) {
                     matches = true;
-                } else if (city == null) {
-                    matches = true; // anonymous / general view
+                } else if (resolvedCity == null) {
+                    matches = true; // anonymous / statewide general view
                 }
                 if (userLat != null && userLng != null && l.getLatitude() != 0.0) {
                     distanceKm = GeoTargetingService.haversineKm(userLat, userLng, l.getLatitude(), l.getLongitude());
@@ -224,7 +225,7 @@ public class AdCampaignService {
                     if (distanceKm <= c.getRadiusKm()) {
                         matches = true;
                     }
-                } else if (userLat == null && userLng == null && city != null && l.getCity() != null && city.equalsIgnoreCase(l.getCity())) {
+                } else if (userLat == null && userLng == null && resolvedCity != null && l.getCity() != null && resolvedCity.equalsIgnoreCase(l.getCity())) {
                     // Fallback for visitors with only city selected
                     matches = true;
                 }
