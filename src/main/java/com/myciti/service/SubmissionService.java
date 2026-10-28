@@ -601,12 +601,6 @@ public class SubmissionService {
     }
 
     private String sanitize(String input, int maxLength) {
-        if (input == null) return null;
-        // Strip HTML tags and trim
-        String stripped = input.replaceAll("<[^>]*>", "").trim();
-        if (stripped.length() > maxLength) {
-            return stripped.substring(0, maxLength);
-        }
-        return stripped;
+        return com.myciti.util.SanitizeUtils.cleanText(input, maxLength);
     }
 }

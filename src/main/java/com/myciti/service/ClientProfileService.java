@@ -426,12 +426,7 @@ public class ClientProfileService {
     }
 
     private String sanitize(String input, int maxLength) {
-        if (input == null) return null;
-        String stripped = input.replaceAll("<[^>]*>", "").trim();
-        if (stripped.length() > maxLength) {
-            return stripped.substring(0, maxLength);
-        }
-        return stripped;
+        return com.myciti.util.SanitizeUtils.cleanText(input, maxLength);
     }
 
     private ListingResponse mapListingToResponse(Listing listing, PublicClientProfileResponse client, LocalTime currentTime) {

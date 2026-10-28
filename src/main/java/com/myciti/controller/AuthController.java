@@ -133,10 +133,13 @@ public class AuthController {
 
         if (origin == null || origin.isBlank()) {
             String secFetchSite = request.getHeader("Sec-Fetch-Site");
-            if ("cross-site".equalsIgnoreCase(secFetchSite)) {
-                throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden: Cross-site request rejected");
+            String requestedWith = request.getHeader("X-Requested-With");
+            if ("XMLHttpRequest".equalsIgnoreCase(requestedWith) ||
+                "same-origin".equalsIgnoreCase(secFetchSite) ||
+                "same-site".equalsIgnoreCase(secFetchSite)) {
+                return;
             }
-            return;
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden: Missing or invalid request origin");
         }
 
         String normalizedOrigin = origin.trim().replaceAll("/+$", "");

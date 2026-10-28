@@ -263,9 +263,7 @@ public class UserService {
     }
 
     private String sanitize(String input) {
-        if (input == null) return null;
-        String cleaned = input.replaceAll("<[^>]*>", "").trim();
-        return cleaned.isEmpty() ? null : cleaned;
+        return com.myciti.util.SanitizeUtils.cleanText(input);
     }
 
     private UserDto mapToDto(User user) {

@@ -293,6 +293,8 @@ public class AdCampaignService {
                     } catch (Exception e) {
                         log.warn("Failed to flush impressions for ad campaign #{}: {}", id, e.getMessage());
                     }
+                } else if (adder.sum() == 0) {
+                    pendingImpressions.computeIfPresent(id, (k, a) -> a.sum() == 0 ? null : a);
                 }
             });
         }
@@ -305,6 +307,8 @@ public class AdCampaignService {
                     } catch (Exception e) {
                         log.warn("Failed to flush clicks for ad campaign #{}: {}", id, e.getMessage());
                     }
+                } else if (adder.sum() == 0) {
+                    pendingClicks.computeIfPresent(id, (k, a) -> a.sum() == 0 ? null : a);
                 }
             });
         }
@@ -384,6 +388,8 @@ public class AdCampaignService {
         AdCampaign campaign = getCampaignOrThrow(campaignId);
         checkManagePermission(userId, campaign);
         adCampaignRepository.delete(campaign);
+        pendingImpressions.remove(campaignId);
+        pendingClicks.remove(campaignId);
     }
 
     @CacheEvict(value = "activeAds", allEntries = true)
@@ -391,6 +397,8 @@ public class AdCampaignService {
     public void deleteCampaignAdmin(Long campaignId) {
         AdCampaign campaign = getCampaignOrThrow(campaignId);
         adCampaignRepository.delete(campaign);
+        pendingImpressions.remove(campaignId);
+        pendingClicks.remove(campaignId);
 
         if (auditLogRepository != null) {
             auditLogRepository.save(new AuditLog(

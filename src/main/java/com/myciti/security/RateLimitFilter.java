@@ -19,9 +19,23 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimitingService rateLimitingService;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final java.util.Set<String> configuredTrustedProxies;
+
+    public RateLimitFilter(
+        RateLimitingService rateLimitingService,
+        @org.springframework.beans.factory.annotation.Value("${app.rate-limit.trusted-proxies:}") String trustedProxiesConfig
+    ) {
+        this.rateLimitingService = rateLimitingService;
+        this.configuredTrustedProxies = (trustedProxiesConfig != null && !trustedProxiesConfig.isBlank())
+            ? java.util.Arrays.stream(trustedProxiesConfig.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(java.util.stream.Collectors.toSet())
+            : java.util.Collections.emptySet();
+    }
 
     public RateLimitFilter(RateLimitingService rateLimitingService) {
-        this.rateLimitingService = rateLimitingService;
+        this(rateLimitingService, "");
     }
 
     @Override
@@ -110,15 +124,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private boolean isLocalOrProxy(String ip) {
         if (ip == null) return false;
-        if (ip.equals("127.0.0.1") || ip.equals("0:0:0:0:0:0:0:1") || ip.equals("::1")) {
+        String trimmed = ip.trim();
+        if (configuredTrustedProxies.contains(trimmed)) {
             return true;
         }
-        if (ip.startsWith("10.") || ip.startsWith("192.168.")) {
+        if (trimmed.equals("127.0.0.1") || trimmed.equals("0:0:0:0:0:0:0:1") || trimmed.equals("::1")) {
             return true;
         }
-        if (ip.startsWith("172.")) {
+        if (trimmed.startsWith("10.") || trimmed.startsWith("192.168.")) {
+            return true;
+        }
+        if (trimmed.startsWith("172.")) {
             try {
-                String[] parts = ip.split("\\.");
+                String[] parts = trimmed.split("\\.");
                 if (parts.length >= 2) {
                     int secondOctet = Integer.parseInt(parts[1]);
                     return secondOctet >= 16 && secondOctet <= 31;
