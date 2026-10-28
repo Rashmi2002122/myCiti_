@@ -25,7 +25,7 @@ public class ListingRequest {
     @NotBlank(message = "Landmark is required")
     private String landmark;
 
-    private String city = "Kolkata";
+    private String city = "Bhubaneswar";
 
     @NotNull(message = "Latitude is required")
     private Double latitude;

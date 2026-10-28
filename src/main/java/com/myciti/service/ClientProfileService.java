@@ -446,7 +446,7 @@ public class ClientProfileService {
         dto.setDescription(listing.getDescription());
         dto.setAddress(listing.getAddress());
         dto.setLandmark(listing.getLandmark());
-        dto.setCity(listing.getCity() != null ? listing.getCity() : "Kolkata");
+        dto.setCity(listing.getCity() != null ? listing.getCity() : "Bhubaneswar");
         dto.setLatitude(listing.getLatitude());
         dto.setLongitude(listing.getLongitude());
         dto.setStartDate(listing.getStartDate());

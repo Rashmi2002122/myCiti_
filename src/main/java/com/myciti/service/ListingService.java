@@ -349,7 +349,7 @@ public class ListingService {
         dto.setDescription(listing.getDescription());
         dto.setAddress(listing.getAddress());
         dto.setLandmark(listing.getLandmark());
-        dto.setCity(listing.getCity() != null ? listing.getCity() : "Kolkata");
+        dto.setCity(listing.getCity() != null ? listing.getCity() : "Bhubaneswar");
         dto.setLatitude(listing.getLatitude());
         dto.setLongitude(listing.getLongitude());
         dto.setStartDate(listing.getStartDate());
@@ -387,7 +387,7 @@ public class ListingService {
         dto.setDescription((String) row[3]);
         dto.setAddress((String) row[4]);
         dto.setLandmark((String) row[5]);
-        dto.setCity(row[6] != null ? (String) row[6] : "Kolkata");
+        dto.setCity(row[6] != null ? (String) row[6] : "Bhubaneswar");
         dto.setLatitude(((Number) row[7]).doubleValue());
         dto.setLongitude(((Number) row[8]).doubleValue());
 

@@ -135,7 +135,7 @@ public class AdCampaignService {
         if (resolvedCity == null || resolvedCity.isBlank()) {
             resolvedCity = listing.getCity();
         }
-        campaign.setTargetCity(resolvedCity != null && !resolvedCity.isBlank() ? resolvedCity.trim() : "Kolkata");
+        campaign.setTargetCity(resolvedCity != null && !resolvedCity.isBlank() ? resolvedCity.trim() : "Bhubaneswar");
 
         campaign.setStartDate(req.getStartDate());
         campaign.setEndDate(req.getEndDate());

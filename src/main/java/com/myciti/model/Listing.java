@@ -32,7 +32,7 @@ public class Listing {
     private String landmark;
 
     @Column(length = 100)
-    private String city = "Kolkata";
+    private String city = "Bhubaneswar";
 
     @Column(nullable = false)
     private Double latitude;
