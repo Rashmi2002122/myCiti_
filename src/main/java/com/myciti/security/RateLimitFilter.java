@@ -7,31 +7,38 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimitingService rateLimitingService;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final java.util.Set<String> configuredTrustedProxies;
+    private final Set<String> configuredTrustedProxies;
 
+    @Autowired
     public RateLimitFilter(
         RateLimitingService rateLimitingService,
-        @org.springframework.beans.factory.annotation.Value("${app.rate-limit.trusted-proxies:}") String trustedProxiesConfig
+        @Value("${app.rate-limit.trusted-proxies:}") String trustedProxiesConfig
     ) {
         this.rateLimitingService = rateLimitingService;
         this.configuredTrustedProxies = (trustedProxiesConfig != null && !trustedProxiesConfig.isBlank())
-            ? java.util.Arrays.stream(trustedProxiesConfig.split(","))
+            ? Arrays.stream(trustedProxiesConfig.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
-                .collect(java.util.stream.Collectors.toSet())
-            : java.util.Collections.emptySet();
+                .collect(Collectors.toSet())
+            : Collections.emptySet();
     }
 
     public RateLimitFilter(RateLimitingService rateLimitingService) {
