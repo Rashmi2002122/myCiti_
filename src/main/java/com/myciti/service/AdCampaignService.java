@@ -261,11 +261,17 @@ public class AdCampaignService {
 
     /**
      * Record impression count into high-performance in-memory buffer.
+     * Hardened against impression count spoofing: count is clamped to exactly 1 per invocation.
      */
     public void recordImpressions(Long campaignId, long count) {
-        if (campaignId != null && count > 0 && count <= 50) {
-            pendingImpressions.computeIfAbsent(campaignId, k -> new java.util.concurrent.atomic.LongAdder()).add(count);
+        if (campaignId != null && count > 0) {
+            long safeCount = Math.min(count, 1L);
+            pendingImpressions.computeIfAbsent(campaignId, k -> new java.util.concurrent.atomic.LongAdder()).add(safeCount);
         }
+    }
+
+    public void recordImpressions(Long campaignId) {
+        recordImpressions(campaignId, 1L);
     }
 
     /**

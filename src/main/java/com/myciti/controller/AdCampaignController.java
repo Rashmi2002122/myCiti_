@@ -42,13 +42,11 @@ public class AdCampaignController {
 
     /**
      * Public: record impression.
+     * Hardened against impression inflation: increments exactly 1 impression per request.
      */
     @PostMapping("/campaigns/{id}/impressions")
-    public ResponseEntity<Void> recordImpressions(
-        @PathVariable Long id,
-        @RequestParam(defaultValue = "1") long count
-    ) {
-        adCampaignService.recordImpressions(id, count);
+    public ResponseEntity<Void> recordImpressions(@PathVariable Long id) {
+        adCampaignService.recordImpressions(id, 1L);
         return ResponseEntity.noContent().build();
     }
 
@@ -71,7 +69,7 @@ public class AdCampaignController {
         @Valid @RequestBody AdReportRequest req
     ) {
         adCampaignService.reportAd(user != null ? user.getId() : null, id, req);
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("message", "Ad reported successfully. Thank you for keeping myCiti safe."));
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("message", "Ad reported successfully. Thank you for keeping myCite safe."));
     }
 
     /**
