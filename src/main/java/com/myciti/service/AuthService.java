@@ -90,7 +90,7 @@ public class AuthService {
 
         // Enforce account suspension check BEFORE mutating state or writing to DB
         if (user.getId() != null && user.getStatus() == UserStatus.SUSPENDED) {
-            throw new AccessDeniedException("Your account is suspended. Contact admin@myciti.com");
+            throw new AccessDeniedException("Your account is suspended. Contact admin@mycite.com");
         }
 
         // Update profile photo and name if changed in Google
@@ -180,7 +180,7 @@ public class AuthService {
 
         User user = storedToken.getUser();
         if (user.getStatus() == UserStatus.SUSPENDED) {
-            throw new AccessDeniedException("Your account is suspended. Contact admin@myciti.com");
+            throw new AccessDeniedException("Your account is suspended. Contact admin@mycite.com");
         }
 
         // Revoke the old refresh token (rotation)

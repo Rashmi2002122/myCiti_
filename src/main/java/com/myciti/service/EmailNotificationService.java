@@ -22,7 +22,7 @@ public class EmailNotificationService {
     @Value("${app.mail.enabled:false}")
     private boolean mailEnabled;
 
-    @Value("${app.mail.from:admin@myciti.com}")
+    @Value("${app.mail.from:admin@mycite.com}")
     private String fromEmail;
 
     @Value("${app.auth.admin-emails:}")
@@ -55,12 +55,12 @@ public class EmailNotificationService {
             message.setSubject("🔔 New Advertisement Submitted for Approval: " + sanitizeHeader(submissionTitle));
             message.setText(String.format(
                     "Hello Admin,\n\n" +
-                    "A new advertisement has been submitted on myCiti and is waiting for your review.\n\n" +
+                    "A new advertisement has been submitted on myCite and is waiting for your review.\n\n" +
                     "• Submission ID: #%d\n" +
                     "• Title: %s\n" +
                     "• Submitter: %s (%s)\n\n" +
-                    "Please log in to the myCiti admin review dashboard to approve or decline.\n\n" +
-                    "— myCiti Team",
+                    "Please log in to the myCite admin review dashboard to approve or decline.\n\n" +
+                    "— myCite Team",
                     submissionId, submissionTitle, submitterName, submitterEmail
             ));
             mailSender.send(message);
@@ -86,15 +86,15 @@ public class EmailNotificationService {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
             message.setTo(toEmail.trim());
-            message.setSubject("🎉 Your Advertisement is Approved and Live on myCiti!");
+            message.setSubject("🎉 Your Advertisement is Approved and Live on myCite!");
             message.setText(String.format(
                     "Hello %s,\n\n" +
-                    "Great news! Your advertisement \"%s\" has been approved by the myCiti team and is now live on the public map and festival guide.\n\n" +
+                    "Great news! Your advertisement \"%s\" has been approved by the myCite team and is now live on the public map and festival guide.\n\n" +
                     "Listing ID: #%d\n\n" +
-                    "You can view and manage your posts anytime from your myCiti account dashboard.\n\n" +
+                    "You can view and manage your posts anytime from your myCite account dashboard.\n\n" +
                     "Warm regards,\n" +
-                    "The myCiti Team\n" +
-                    "admin@myciti.com",
+                    "The myCite Team\n" +
+                    "admin@mycite.com",
                     userName != null ? userName : "there", submissionTitle, listingId
             ));
             mailSender.send(message);
@@ -119,16 +119,16 @@ public class EmailNotificationService {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
             message.setTo(toEmail.trim());
-            message.setSubject("⚠️ Update regarding your advertisement on myCiti");
+            message.setSubject("⚠️ Update regarding your advertisement on myCite");
             message.setText(String.format(
                     "Hello %s,\n\n" +
-                    "Thank you for submitting \"%s\" on myCiti.\n\n" +
+                    "Thank you for submitting \"%s\" on myCite.\n\n" +
                     "Upon review, your submission could not be approved for the following reason:\n" +
                     "\"%s\"\n\n" +
                     "You can easily edit and resubmit your advertisement anytime from the 'My Advertisements' section in the app.\n\n" +
-                    "Need assistance? Please feel free to reply or write to admin@myciti.com.\n\n" +
+                    "Need assistance? Please feel free to reply or write to admin@mycite.com.\n\n" +
                     "Warm regards,\n" +
-                    "The myCiti Team",
+                    "The myCite Team",
                     userName != null ? userName : "there", submissionTitle, reason
             ));
             mailSender.send(message);

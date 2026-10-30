@@ -55,6 +55,6 @@ public class PublicClientController {
         Long reporterId = (user != null) ? user.getId() : null;
         clientProfileService.reportProfile(slug, reporterId, req);
         return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
-            .body(java.util.Map.of("message", "Profile report submitted successfully. Thank you for keeping myCiti safe."));
+            .body(java.util.Map.of("message", "Profile report submitted successfully. Thank you for keeping myCite safe."));
     }
 }

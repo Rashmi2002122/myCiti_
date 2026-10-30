@@ -66,7 +66,7 @@ public class ClientRequestService {
             .orElseThrow(() -> new ResourceNotFoundException("User #" + userId + " not found"));
 
         if (user.getStatus() == UserStatus.SUSPENDED) {
-            throw new AccessDeniedException("Your account is suspended. Contact admin@myciti.com");
+            throw new AccessDeniedException("Your account is suspended. Contact admin@mycite.com");
         }
 
         if (user.getRole() == Role.CLIENT || user.getRole() == Role.ADMIN) {

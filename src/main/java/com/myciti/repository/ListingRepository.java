@@ -57,6 +57,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
             ))) AS distance_km,
             l.client_profile_id
         FROM listings l
+        LEFT JOIN client_profiles cp ON cp.id = l.client_profile_id
         WHERE l.status = 'PUBLISHED'
           AND :currentDate BETWEEN l.start_date AND l.end_date
           AND (CAST(:city AS VARCHAR) IS NULL OR LOWER(l.city) = LOWER(CAST(:city AS VARCHAR)))
@@ -66,7 +67,13 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
             LOWER(l.title) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%')) OR
             LOWER(l.description) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%')) OR
             LOWER(l.address) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%')) OR
-            LOWER(l.landmark) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%'))
+            LOWER(l.landmark) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%')) OR
+            (l.offer_text IS NOT NULL AND LOWER(l.offer_text) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%'))) OR
+            (cp.business_name IS NOT NULL AND LOWER(cp.business_name) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%'))) OR
+            (cp.slug IS NOT NULL AND (
+                LOWER(cp.slug) LIKE LOWER(CONCAT('%', REPLACE(CAST(:q AS VARCHAR), '@', ''), '%')) OR
+                LOWER(CONCAT('@', cp.slug)) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%'))
+            ))
           )
           AND (
             CAST(:radiusKm AS DOUBLE PRECISION) IS NULL OR
@@ -95,6 +102,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
     @Query(value = """
         SELECT l.*
         FROM listings l
+        LEFT JOIN client_profiles cp ON cp.id = l.client_profile_id
         WHERE l.status = 'PUBLISHED'
           AND :currentDate BETWEEN l.start_date AND l.end_date
           AND (CAST(:city AS VARCHAR) IS NULL OR LOWER(l.city) = LOWER(CAST(:city AS VARCHAR)))
@@ -104,7 +112,13 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
             LOWER(l.title) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%')) OR
             LOWER(l.description) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%')) OR
             LOWER(l.address) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%')) OR
-            LOWER(l.landmark) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%'))
+            LOWER(l.landmark) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%')) OR
+            (l.offer_text IS NOT NULL AND LOWER(l.offer_text) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%'))) OR
+            (cp.business_name IS NOT NULL AND LOWER(cp.business_name) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%'))) OR
+            (cp.slug IS NOT NULL AND (
+                LOWER(cp.slug) LIKE LOWER(CONCAT('%', REPLACE(CAST(:q AS VARCHAR), '@', ''), '%')) OR
+                LOWER(CONCAT('@', cp.slug)) LIKE LOWER(CONCAT('%', CAST(:q AS VARCHAR), '%'))
+            ))
           )
         ORDER BY l.start_date ASC, l.title ASC
         LIMIT 250

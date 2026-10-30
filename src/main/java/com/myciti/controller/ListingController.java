@@ -86,7 +86,7 @@ public class ListingController {
             <html lang="en">
             <head>
                 <meta charset="UTF-8">
-                <title>%s - myCiti</title>
+                <title>%s - myCite</title>
                 <!-- Open Graph / Facebook / WhatsApp -->
                 <meta property="og:type" content="website" />
                 <meta property="og:title" content="%s (%s)" />
@@ -117,7 +117,7 @@ public class ListingController {
                     <p><strong>Status:</strong> %s &bull; %s</p>
                     <p><strong>Venue:</strong> %s, %s</p>
                     <p>%s</p>
-                    <a class="btn" href="/?listingId=%d">View on myCiti Map</a>
+                    <a class="btn" href="/?listingId=%d">View on myCite Map</a>
                 </div>
             </body>
             </html>

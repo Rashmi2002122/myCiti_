@@ -57,7 +57,7 @@ public class NotificationService {
     @Value("${app.webpush.private-key:}")
     private String vapidPrivateKey;
 
-    @Value("${app.webpush.subject:mailto:admin@myciti.com}")
+    @Value("${app.webpush.subject:mailto:admin@mycite.com}")
     private String vapidSubject;
 
     private PushService pushService;
@@ -114,7 +114,7 @@ public class NotificationService {
 
         String pub = vapidPublicKey.trim();
         String priv = vapidPrivateKey.trim();
-        String subject = (vapidSubject != null && !vapidSubject.isBlank()) ? vapidSubject.trim() : "mailto:admin@myciti.com";
+        String subject = (vapidSubject != null && !vapidSubject.isBlank()) ? vapidSubject.trim() : "mailto:admin@mycite.com";
 
         try {
             this.pushService = new PushService(pub, priv, subject);

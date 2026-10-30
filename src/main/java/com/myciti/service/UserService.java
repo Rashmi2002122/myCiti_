@@ -86,7 +86,7 @@ public class UserService {
         User user = findUserById(userId);
 
         if (user.getStatus() == UserStatus.SUSPENDED) {
-            throw new AccessDeniedException("Your account is suspended. Contact admin@myciti.com");
+            throw new AccessDeniedException("Your account is suspended. Contact admin@mycite.com");
         }
 
         String name = sanitize(request.getName());
@@ -138,7 +138,7 @@ public class UserService {
         User user = findUserById(userId);
 
         if (user.getStatus() == UserStatus.SUSPENDED) {
-            throw new AccessDeniedException("Your account is suspended. Contact admin@myciti.com");
+            throw new AccessDeniedException("Your account is suspended. Contact admin@mycite.com");
         }
 
         if (request.getLatitude() != null) {

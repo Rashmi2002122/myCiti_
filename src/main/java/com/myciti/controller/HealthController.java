@@ -13,7 +13,7 @@ public class HealthController {
     public ResponseEntity<Map<String, String>> healthCheck() {
         return ResponseEntity.ok(Map.of(
             "status", "UP",
-            "service", "myciti-backend"
+            "service", "mycite-backend"
         ));
     }
 
@@ -21,8 +21,8 @@ public class HealthController {
     public ResponseEntity<Map<String, String>> root() {
         return ResponseEntity.ok(Map.of(
             "status", "UP",
-            "service", "myciti-backend",
-            "message", "myCiti API is running"
+            "service", "mycite-backend",
+            "message", "myCite API is running"
         ));
     }
 }

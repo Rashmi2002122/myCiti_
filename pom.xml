@@ -15,7 +15,7 @@
     <artifactId>myciti-backend</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>myciti-backend</name>
-    <description>myCiti backend API for Durga Puja and city events</description>
+    <description>myCite backend API for Durga Puja and city events</description>
 
     <properties>
         <java.version>17</java.version>
